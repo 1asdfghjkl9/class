@@ -74,18 +74,23 @@ export class BossAI {
     u.y = CONFIG.GROUND_Y - u.radius;
   }
 
-  // 通用：获取普通射击参数
+  // 通用：获取普通射击参数（增强 AI：更低误差+预测提前量）
   getNormalShotParams() {
     const u = this.unit;
     const target = this.battle.player;
     const bx = u.x;
     const by = u.y - u.radius / 2;
     const accMul = this.battle.status ? this.battle.status.getAccuracyModifier(u) : 1;
-    const tx = target.x + (Math.random() - 0.5) * ((u.aimError || 45) * 2 / Math.max(0.3, accMul));
+    // 预测玩家移动方向，计算提前量
+    let leadX = 0;
+    if (this.battle._moveLeft || this.battle._moveBtnLeft) leadX = -CONFIG.PLAYER_MOVE_SPEED * 0.3;
+    if (this.battle._moveRight || this.battle._moveBtnRight) leadX = CONFIG.PLAYER_MOVE_SPEED * 0.3;
+    const aimErr = (u.aimError || 45) * 0.5; // 误差减半
+    const tx = target.x + leadX + (Math.random() - 0.5) * (aimErr * 2 / Math.max(0.3, accMul));
     const ty = target.y - target.radius;
     const dx = tx - bx;
     const dy = ty - by;
-    const speed = u.shotSpeed ?? 600;
+    const speed = (u.shotSpeed ?? 600) * 1.15; // 射速提升 15%
     const dir = dx >= 0 ? 1 : -1;
     const vx = dir * speed;
     const t = Math.max(0.1, Math.abs(dx) / speed);
@@ -110,8 +115,8 @@ export class BossAI {
     const boss = this.unit;
     const hpRatio = boss.hp / boss.maxHp;
 
-    // 叫家长（HP <= 20%）
-    if (hpRatio <= this.boss.enrageThreshold && !this.enraged) {
+    // 叫家长（HP <= 25%，更早狂暴）
+    if (hpRatio <= (this.boss.enrageThreshold * 1.25) && !this.enraged) {
       this.enraged = true;
       return { type: 'enrage', quote: (this.boss.quotes && this.boss.quotes.enrage) || '叫家长！' };
     }
@@ -123,9 +128,9 @@ export class BossAI {
       return { type: 'roll_call', quote: (this.boss.quotes && this.boss.quotes.rollCall) || '点名！' };
     }
 
-    // 拖堂（笔袋存活 + CD 就绪）
+    // 拖堂（笔袋存活 + CD 就绪，间隔更短）
     if (this._isWeakpointAlive('penbag') && this.dragClassCd <= 0) {
-      this.dragClassCd = this.boss.dragClassInterval;
+      this.dragClassCd = Math.max(1, (this.boss.dragClassInterval || 3) - 1);
       return { type: 'drag_class', quote: (this.boss.quotes && this.boss.quotes.dragClass) || '拖堂五分钟。' };
     }
 
@@ -156,16 +161,16 @@ export class BossAI {
     const boss = this.unit;
     const hpRatio = boss.hp / boss.maxHp;
 
-    // 半血题海（300道题的锤炼）
-    if (hpRatio <= this.boss.rageThreshold && !this.paperRaged) {
+    // 半血题海（400道题，更早爆发）
+    if (hpRatio <= (this.boss.rageThreshold * 1.2) && !this.paperRaged) {
       this.paperRaged = true;
-      return { type: 'paper_rage', quote: (this.boss.quotes && this.boss.quotes.rage) || '做三百道题！' };
+      return { type: 'paper_rage', quote: (this.boss.quotes && this.boss.quotes.rage) || '做四百道题！' };
     }
 
-    // 口答（CD 就绪）
+    // 口答（CD 就绪，间隔更短）
     if (this.quizCd <= 0) {
       // 试卷被打掉 → 口答间隔变长
-      const interval = this._isWeakpointAlive('papers') ? this.boss.quizInterval : this.boss.quizInterval * 2;
+      const interval = this._isWeakpointAlive('papers') ? Math.max(1, this.boss.quizInterval - 1) : this.boss.quizInterval;
       this.quizCd = interval;
       return { type: 'quiz', quote: '口答！' };
     }
@@ -183,18 +188,18 @@ export class BossAI {
   _wuDecide() {
     const boss = this.unit;
 
-    // 纪律检查（CD 就绪；教鞭被打掉后仍会检查，但间隔变长）
+    // 纪律检查（CD 就绪，更频繁）
     if (this.disciplineCd <= 0) {
       const interval = this._isWeakpointAlive('pointer')
-        ? this.boss.disciplineInterval
-        : (this.boss.disciplineIntervalBroken || this.boss.disciplineInterval * 2);
+        ? Math.max(1, this.boss.disciplineInterval - 1)
+        : Math.max(1, (this.boss.disciplineIntervalBroken || this.boss.disciplineInterval * 2) - 1);
       this.disciplineCd = interval;
       return { type: 'discipline', quote: (this.boss.quotes && this.boss.quotes.discipline) || '纪律检查！' };
     }
 
-    // 禁写作业（作业本堆存活 + CD 就绪）
+    // 禁写作业（作业本堆存活 + CD 就绪，更频繁）
     if (this._isWeakpointAlive('homework_stack') && this.homeworkCd <= 0) {
-      this.homeworkCd = this.boss.homeworkInterval;
+      this.homeworkCd = Math.max(1, this.boss.homeworkInterval - 1);
       return { type: 'homework', quote: (this.boss.quotes && this.boss.quotes.confiscate) || '作业没收！' };
     }
 
@@ -209,12 +214,12 @@ export class BossAI {
     const hpRatio = u.hp / u.maxHp;
     let damageMul = 1;
 
-    // 低血狂暴
-    if (mech.includes('buff_low_hp') && hpRatio <= 0.5) {
-      damageMul = 1.5;
-      u.buffMul = 1.5;
+    // 低血狂暴（更早触发）
+    if (mech.includes('buff_low_hp') && hpRatio <= 0.6) {
+      damageMul = 1.8;
+      u.buffMul = 1.8;
     } else {
-      u.buffMul = 1;
+      u.buffMul = 1.2; // 基础伤害提升
     }
 
     // 自我护盾
