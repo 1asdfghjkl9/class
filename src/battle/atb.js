@@ -54,34 +54,24 @@ export class ATBSystem {
   freeze() { this.frozen = true; }
   unfreeze() { this.frozen = false; }
 
-  // 消耗 AP 并推进冷却
+  // 消耗 AP（已取消技能独立冷却，不再推进冷却）
   consumeAP(unit, amount) {
     unit.ap -= amount;
-    // 推进所有冷却
-    for (const id in unit.cooldowns) {
-      if (unit.cooldowns[id] > 0) {
-        unit.cooldowns[id] -= amount;
-        if (unit.cooldowns[id] <= 0) {
-          unit.cooldowns[id] = 0;
-        }
-      }
-    }
   }
 
-  // 设置技能冷却
+  // 设置技能冷却（已取消技能独立冷却，此方法不再生效）
   startCooldown(unit, skillId, cdMax) {
-    unit.cooldowns[skillId] = cdMax;
+    // no-op: 技能不再有独立冷却
   }
 
-  // 技能是否就绪
+  // 技能是否就绪（已取消技能独立冷却，始终返回 true）
   isReady(unit, skillId) {
-    return !unit.cooldowns[skillId] || unit.cooldowns[skillId] <= 0;
+    return true;
   }
 
-  // 获取冷却进度（0=就绪, 1=刚冷却）
+  // 获取冷却进度（已取消技能独立冷却，始终返回 0）
   getCDProgress(unit, skillId, cdMax) {
-    const cd = unit.cooldowns[skillId] || 0;
-    return cd > 0 ? cd / cdMax : 0;
+    return 0;
   }
 
   // 待机（AP 不足时）
