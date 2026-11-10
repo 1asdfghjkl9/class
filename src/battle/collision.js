@@ -6,7 +6,7 @@ import { CONFIG } from '../config.js';
 
 // 检测弹丸与所有碰撞体
 // 返回 { hit: true/false, target, point, terrainObj }
-export function checkCollision(projectile, terrainList, units) {
+export function checkCollision(projectile, terrainList, units, groundSegments) {
   const px = projectile.x;
   const py = projectile.y;
   const pr = projectile.radius;
@@ -19,12 +19,32 @@ export function checkCollision(projectile, terrainList, units) {
     }
   }
 
-  // 2. 地面碰撞
+  // 2. 地面碰撞（检查可破坏分段）
   if (py >= CONFIG.GROUND_Y - pr && py < CONFIG.GROUND_Y + 5) {
-    return { type: 'ground', point: { x: px, y: CONFIG.GROUND_Y }, normal: { x: 0, y: -1 } };
+    if (groundSegments) {
+      const segIdx = Math.max(0, Math.min(groundSegments.length - 1, Math.floor(px / 40)));
+      const seg = groundSegments[segIdx];
+      if (seg && seg.destroyed) {
+        // 地面被破坏，弹丸穿过
+      } else {
+        return { type: 'ground', point: { x: px, y: CONFIG.GROUND_Y }, normal: { x: 0, y: -1 } };
+      }
+    } else {
+      return { type: 'ground', point: { x: px, y: CONFIG.GROUND_Y }, normal: { x: 0, y: -1 } };
+    }
   }
   if (py >= CONFIG.GROUND_Y) {
-    return { type: 'ground', point: { x: px, y: CONFIG.GROUND_Y }, normal: { x: 0, y: -1 } };
+    if (groundSegments) {
+      const segIdx = Math.max(0, Math.min(groundSegments.length - 1, Math.floor(px / 40)));
+      const seg = groundSegments[segIdx];
+      if (seg && seg.destroyed && py < CONFIG.GROUND_Y + CONFIG.GROUND_DEPTH) {
+        // 在被破坏的地面区域内，让弹丸继续穿过
+      } else {
+        return { type: 'ground', point: { x: px, y: CONFIG.GROUND_Y }, normal: { x: 0, y: -1 } };
+      }
+    } else {
+      return { type: 'ground', point: { x: px, y: CONFIG.GROUND_Y }, normal: { x: 0, y: -1 } };
+    }
   }
 
   // 3. 单位碰撞（Boss、小怪、玩家）
