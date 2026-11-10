@@ -5,8 +5,8 @@
 export const CONFIG = {
   // ---------- 分辨率（横屏 16:9）----------
   WIDTH: 1600,
-  HEIGHT: 900,
-  ASPECT: 1600 / 900,
+  HEIGHT: 1200,
+  ASPECT: 1600 / 1200,
 
   // ---------- 物理 ----------
   GRAVITY: 900,
@@ -20,8 +20,8 @@ export const CONFIG = {
   SLOWMO_DURATION: 0.15,
   SLOWMO_SCALE: 0.4,
   SUPER_CRIT_SLOWMO: 0.3,
-  PREDICT_POINTS: 20,
-  PREDICT_TIME: 0.8,
+  PREDICT_POINTS: 8,
+  PREDICT_TIME: 0.35,
 
   // ---------- ATB ----------
   ATB_MAX: 100,
@@ -30,16 +30,17 @@ export const CONFIG = {
   MINION_SPEED: 15,
 
   // ---------- AP ----------
-  AP_MAX: 6,
-  AP_PER_TURN: 3,
-  NORMAL_SHOT_AP: 3,
-  STANDBY_BONUS_AP: 1,
+  AP_MAX: 12,
+  AP_PER_TURN: 5,
+  NORMAL_SHOT_AP: 0,
+  STANDBY_BONUS_AP: 3,
 
   // ---------- 玩家 ----------
   PLAYER_HP: 140,
   PLAYER_MAX_HP: 140,
-  PLAYER_X: 240,
+  PLAYER_X: 200,
   PLAYER_RADIUS: 28,
+  PLAYER_MOVE_SPEED: 150,
 
   // ---------- 暴击 ----------
   BASE_CRIT: 0.15,
@@ -64,7 +65,9 @@ export const CONFIG = {
   RAGE_ON_WEAKPOINT: 6,
 
   // ---------- 地形 ----------
-  GROUND_Y: 780,
+  GROUND_Y: 1080,
+  GROUND_DEPTH: 200,
+  GROUND_HP: 80,
   MAX_DECALS: 200,
 
   // ---------- 金老师 ----------
@@ -184,6 +187,7 @@ export const CONFIG = {
     grass:      '#7CB342',
     sky:        '#87CEEB',
     ground:     '#8B7355',
+    groundDark: '#6B5340',
     textWhite:  '#FFFFFF',
     textDark:   '#333333',
     critYellow: '#FFD700',
