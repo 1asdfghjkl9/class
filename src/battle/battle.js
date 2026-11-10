@@ -440,6 +440,7 @@ export class BattleScene {
         break;
       case BS.FIRING:
         this._updateFiring(scaledDt);
+        if (this.kiteAnim) this._updateKiteAnim(scaledDt);
         break;
       case BS.BOSS_TURN:
         this._updateBossTurn(scaledDt);
@@ -656,28 +657,47 @@ export class BattleScene {
     this.player.items.splice(idx, 1);
     this.atb.consumeAP(this.player, item.ap);
 
-    const lv = (this.saveData.itemLevels && this.saveData.itemLevels['kite']) || 1;
-    const itemMul = itemEffectMul(item, lv) * (1 + (this.talent.itemPct || 0) / 100);
-    const dist = (item.distance || 180) * itemMul;
+    // 计算落点：用弹道预测找到着陆位置
+    const sx = this.player.x;
+    const sy = this.player.y - this.player.radius;
+    const vx = Math.cos(angle) * speed;
+    const vy = Math.sin(angle) * speed;
+    const windAccelX = this.currentWind || 0;
 
-    // 沿瞄准方向位移
-    const dx = Math.cos(angle) * dist;
-    const dy = Math.sin(angle) * dist;
-    const oldX = this.player.x;
-    const oldY = this.player.y;
-    this.player.x = Math.max(60, Math.min(CONFIG.WIDTH - 60, this.player.x + dx));
-    this.player.y = Math.max(80, Math.min(CONFIG.GROUND_Y - this.player.radius, this.player.y + dy));
+    // 模拟完整弹道直到落地
+    let landX = sx, landY = CONFIG.GROUND_Y - this.player.radius;
+    let px = sx, py = sy, pvx = vx, pvy = vy;
+    const simDt = 1 / 120;
+    for (let i = 0; i < 600; i++) {
+      pvy += CONFIG.GRAVITY * simDt;
+      pvx += windAccelX * simDt;
+      px += pvx * simDt;
+      py += pvy * simDt;
+      if (py >= CONFIG.GROUND_Y || px < 0 || px > CONFIG.WIDTH) {
+        landX = Math.max(60, Math.min(CONFIG.WIDTH - 60, px));
+        landY = CONFIG.GROUND_Y - this.player.radius;
+        break;
+      }
+      landX = Math.max(60, Math.min(CONFIG.WIDTH - 60, px));
+      landY = py;
+    }
 
-    // 风筝飞行特效
-    this._floatText('风筝!', '#29B6F6', oldX, oldY - 40, 24);
-    this.particles.push(...createHitParticles(oldX, oldY, '#29B6F6', 10, 1.2));
+    // 启动风筝飞行动画
+    this.kiteAnim = {
+      startX: sx,
+      startY: sy,
+      endX: landX,
+      endY: landY,
+      t: 0,
+      duration: 0.8,
+    };
+    this.player.x = landX; // 逻辑位置立即更新（用于碰撞）
+    this.player.y = landY;
+    this.state = BS.FIRING;
+    this.atb.freeze();
     this.audio.play('hit');
-
-    // 检查落地后是否站在洞上
-    this._checkGroundFall(this.player);
-
-    // 风筝使用后不结束回合，回到待命
-    this.state = BS.PLAYER_TURN;
+    this._floatText('风筝!', '#29B6F6', sx, sy - 40, 24);
+    this.particles.push(...createHitParticles(sx, sy, '#29B6F6', 12, 1.5));
   }
 
   _useItem(iid) {
@@ -805,6 +825,40 @@ export class BattleScene {
       return CONFIG.HEIGHT; // 空洞位置返回画布底部
     }
     return CONFIG.GROUND_Y;
+  }
+
+  // 风筝飞行动画更新
+  _updateKiteAnim(dt) {
+    const ka = this.kiteAnim;
+    if (!ka) return;
+    ka.t += dt;
+    const progress = Math.min(1, ka.t / ka.duration);
+    // 抛物线插值
+    const easeT = progress * (2 - progress); // easeOut
+    const arcX = ka.startX + (ka.endX - ka.startX) * easeT;
+    // 弧线高度：最高点在中点
+    const arcH = Math.abs(ka.endX - ka.startX) * 0.25 + 100;
+    const arcY = ka.startY + (ka.endY - ka.startY) * easeT - arcH * Math.sin(progress * Math.PI);
+    ka.renderX = arcX;
+    ka.renderY = arcY;
+
+    // 尾迹粒子
+    if (Math.random() < 0.6) {
+      this.particles.push(...createHitParticles(arcX, arcY, '#81D4FA', 2, 0.5));
+    }
+
+    if (progress >= 1) {
+      this.kiteAnim = null;
+      // 落地特效
+      this.particles.push(...createHitParticles(ka.endX, ka.endY, '#29B6F6', 16, 1.5));
+      this.audio.play('hit');
+      this._addShake(3, 0.1);
+      // 检查落地后是否站在洞上
+      this._checkGroundFall(this.player);
+      // 风筝使用后不结束回合，回到待命
+      this.state = BS.PLAYER_TURN;
+      this.atb.unfreeze();
+    }
   }
 
   // 检查单位是否站在被破坏的地面段上方
@@ -1159,23 +1213,29 @@ export class BattleScene {
       }
       this._addShake(3, 0.1);
     } else if (hit.type === 'ground') {
-      // 可破坏地面：损坏对应分段
+      // 可破坏地面：大范围损坏（每发破坏 3 段 = 120px）
       const segIdx = Math.floor(proj.x / 40);
       const seg = this.groundSegments[Math.max(0, Math.min(this.groundSegments.length - 1, segIdx))];
       if (seg && !seg.destroyed) {
-        seg.hp -= proj.damage * 0.5;
+        seg.hp -= proj.damage * 0.6;
         if (seg.hp <= 0) {
           seg.destroyed = true;
-          // 连带损坏相邻分段（扩大洞口）
-          const seg2 = this.groundSegments[segIdx + 1];
-          if (seg2 && !seg2.destroyed) { seg2.hp -= 30; if (seg2.hp <= 0) seg2.destroyed = true; }
+          // 连带损坏左右各 1-2 段（扩大破坏范围）
+          for (let off = -2; off <= 2; off++) {
+            if (off === 0) continue;
+            const s2 = this.groundSegments[segIdx + off];
+            if (s2 && !s2.destroyed) {
+              s2.hp -= (Math.abs(off) === 1 ? 50 : 25);
+              if (s2.hp <= 0) s2.destroyed = true;
+            }
+          }
           this.audio.play('destroy');
-          this.particles.push(...createHitParticles(proj.x, CONFIG.GROUND_Y, CONFIG.COLORS.groundDark, 16, 1.8));
-          this._addShake(6, 0.2);
+          this.particles.push(...createHitParticles(proj.x, CONFIG.GROUND_Y, CONFIG.COLORS.groundDark || '#6B5B3F', 20, 2.2));
+          this._addShake(8, 0.25);
         } else {
           this.audio.play('hit');
-          this.particles.push(...createHitParticles(proj.x, CONFIG.GROUND_Y, CONFIG.COLORS.ground, 8));
-          this._addShake(3, 0.1);
+          this.particles.push(...createHitParticles(proj.x, CONFIG.GROUND_Y, CONFIG.COLORS.ground || '#8B7355', 10));
+          this._addShake(4, 0.12);
         }
       }
       const decal = createDecal(proj.x, CONFIG.GROUND_Y, 'ground');
@@ -2040,7 +2100,11 @@ export class BattleScene {
     this._renderBossList(ctx);
 
     // 玩家
-    this._renderPlayer(ctx);
+    if (this.kiteAnim) {
+      this._renderKiteFlying(ctx);
+    } else {
+      this._renderPlayer(ctx);
+    }
 
     // 弹丸
     this._renderProjectiles(ctx);
@@ -2144,6 +2208,49 @@ export class BattleScene {
       ctx.fillStyle = 'rgba(255,255,200,0.3)';
       ctx.fillRect(lx - 15, ly - 5, 30, 10);
     }
+
+    // 背景装饰：黑板（远景墙上）
+    const gy = CONFIG.GROUND_Y;
+    ctx.fillStyle = '#1a3a2a';
+    ctx.fillRect(520, 80, 560, 140);
+    ctx.strokeStyle = '#8B7355';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(520, 80, 560, 140);
+    // 黑板上的粉笔字痕迹
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.font = '20px sans-serif';
+    ctx.fillText('同学们好', 560, 120);
+    ctx.fillText('今天考试', 560, 150);
+    ctx.fillText('不许作弊！', 560, 180);
+
+    // 背景装饰：课桌组（纯背景，无碰撞）
+    ctx.fillStyle = 'rgba(139,115,85,0.5)';
+    ctx.strokeStyle = 'rgba(101,67,33,0.5)';
+    ctx.lineWidth = 2;
+    // 玩家侧课桌
+    for (let i = 0; i < 3; i++) {
+      const dx = 380 + i * 90;
+      const dy = gy - 50;
+      ctx.fillRect(dx, dy, 70, 8); // 桌面
+      ctx.strokeRect(dx, dy, 70, 8);
+      ctx.fillRect(dx + 4, dy + 8, 6, 42); // 桌腿
+      ctx.fillRect(dx + 60, dy + 8, 6, 42);
+    }
+    // Boss 侧课桌
+    for (let i = 0; i < 3; i++) {
+      const dx = 850 + i * 90;
+      const dy = gy - 50;
+      ctx.fillRect(dx, dy, 70, 8);
+      ctx.strokeRect(dx, dy, 70, 8);
+      ctx.fillRect(dx + 4, dy + 8, 6, 42);
+      ctx.fillRect(dx + 60, dy + 8, 6, 42);
+    }
+    // 讲台（背景）
+    ctx.fillStyle = 'rgba(120,90,60,0.5)';
+    ctx.fillRect(1150, gy - 80, 120, 8);
+    ctx.strokeRect(1150, gy - 80, 120, 8);
+    ctx.fillRect(1154, gy - 72, 8, 72);
+    ctx.fillRect(1258, gy - 72, 8, 72);
 
     // 地面（可破坏分段渲染）
     for (const seg of this.groundSegments) {
@@ -2326,6 +2433,91 @@ export class BattleScene {
     for (const d of this.decals) {
       this._drawDecal(ctx, d);
     }
+  }
+
+  // ===== 风筝飞行中渲染 =====
+  _renderKiteFlying(ctx) {
+    const ka = this.kiteAnim;
+    if (!ka) return;
+    const rx = ka.renderX || ka.startX;
+    const ry = ka.renderY || ka.startY;
+
+    // 风筝线（从起点到当前位置）
+    ctx.strokeStyle = 'rgba(41,182,246,0.4)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(ka.startX, ka.startY);
+    ctx.lineTo(rx, ry - 30);
+    ctx.stroke();
+
+    // 风筝图形（菱形+尾巴）
+    ctx.save();
+    ctx.translate(rx, ry - 50);
+    ctx.rotate(Math.sin(ka.t * 8) * 0.15);
+    ctx.fillStyle = '#29B6F6';
+    ctx.beginPath();
+    ctx.moveTo(0, -18);
+    ctx.lineTo(14, 0);
+    ctx.lineTo(0, 18);
+    ctx.lineTo(-14, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#0277BD';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // 风筝十字骨架
+    ctx.beginPath();
+    ctx.moveTo(0, -18); ctx.lineTo(0, 18);
+    ctx.moveTo(-14, 0); ctx.lineTo(14, 0);
+    ctx.stroke();
+    // 风筝尾巴
+    ctx.strokeStyle = '#FFEB3B';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, 18);
+    ctx.quadraticCurveTo(-8, 28, 4, 36);
+    ctx.quadraticCurveTo(12, 44, -4, 50);
+    ctx.stroke();
+    ctx.restore();
+
+    // 玩家简化渲染（飞行姿态：手脚张开）
+    const p = this.player;
+    ctx.save();
+    ctx.translate(rx, ry);
+    // 身体（渐变球）
+    const grad = ctx.createRadialGradient(-4, -6, 2, 0, 0, p.radius);
+    grad.addColorStop(0, '#A5D6A7');
+    grad.addColorStop(1, '#2E7D32');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(0, 0, p.radius, 0, Math.PI * 2);
+    ctx.fill();
+    // 眼睛
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(-4, -3, 4, 0, Math.PI * 2);
+    ctx.arc(6, -3, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#1a1a2e';
+    ctx.beginPath();
+    ctx.arc(-3, -2, 2, 0, Math.PI * 2);
+    ctx.arc(7, -2, 2, 0, Math.PI * 2);
+    ctx.fill();
+    // 张嘴笑
+    ctx.strokeStyle = '#1a1a2e';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(1, 4, 5, 0.1, Math.PI - 0.1);
+    ctx.stroke();
+    // 手臂张开（飞行姿态）
+    ctx.strokeStyle = '#2E7D32';
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-8, 2); ctx.lineTo(-16, -6);
+    ctx.moveTo(10, 2); ctx.lineTo(18, -6);
+    ctx.stroke();
+    ctx.restore();
   }
 
   // ===== 玩家渲染 =====
