@@ -67,7 +67,7 @@ export const CONFIG = {
   // ---------- 地形 ----------
   GROUND_Y: 1080,
   GROUND_DEPTH: 200,
-  GROUND_HP: 80,
+  GROUND_HP: 50,
   MAX_DECALS: 200,
 
   // ---------- 金老师 ----------
