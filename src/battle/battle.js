@@ -411,6 +411,20 @@ export class BattleScene {
       if (it.hitAnim > 0) it.hitAnim = Math.max(0, it.hitAnim - dt * 0.8);
     }
 
+    // 弹丸更新（所有状态下都更新，修复 Boss 射击不飞的 bug）
+    const projDt = dt * this.timeScale;
+    if (this.state !== BS.FIRING) {
+      this._updateProjectiles(projDt);
+    }
+
+    // 掉落更新（所有状态下检查，修复玩家/Boss 掉落不生效）
+    this._checkGroundFall(this.player);
+    for (const b of this.bossList) this._checkGroundFall(b);
+    for (const m of this.minions) this._checkGroundFall(m);
+    this._updateFalling(this.player, projDt);
+    for (const b of this.bossList) this._updateFalling(b, projDt);
+    for (const m of this.minions) this._updateFalling(m, dt);
+
     // 气流紊乱计时
     if (this.blurTimer > 0) this.blurTimer -= dt;
     if (this.turbulenceTimer > 0) {
@@ -429,11 +443,6 @@ export class BattleScene {
         break;
       case BS.PLAYER_TURN:
         this._updatePlayerMovement(scaledDt);
-        // 检查 Boss/小怪是否掉落
-        for (const b of this.bossList) this._checkGroundFall(b);
-        for (const m of this.minions) this._checkGroundFall(m);
-        for (const b of this.bossList) this._updateFalling(b, scaledDt);
-        for (const m of this.minions) this._updateFalling(m, scaledDt);
         break; // 等待输入
       case BS.PLAYER_AIMING:
         this._updatePlayerAimingState(scaledDt);
@@ -882,11 +891,12 @@ export class BattleScene {
     if (!unit.falling) return;
     unit.fallVy = (unit.fallVy || 0) + CONFIG.GRAVITY * dt;
     unit.y += unit.fallVy * dt;
-    if (unit.y > CONFIG.HEIGHT + 100) {
-      // 掉出屏幕 → 死亡
+    // 掉落超过地面一定深度 → 直接死亡
+    if (unit.y > CONFIG.GROUND_Y + 120) {
       unit.hp = 0;
       unit.dead = true;
       unit.falling = false;
+      this._floatText('坠落!', '#FF1744', unit.x, CONFIG.GROUND_Y + 60, 28);
       this._onUnitDeath(unit);
     }
   }
@@ -1111,6 +1121,17 @@ export class BattleScene {
       return true;
     });
 
+    // 更新弹丸
+    this._updateProjectiles(dt);
+
+    // 全部结束 → 回合结束（风筝飞行中不触发）
+    if (this.projectiles.length === 0 && this.pendingShots.length === 0 && !this.kiteAnim) {
+      this._onShotsComplete();
+    }
+  }
+
+  // 弹丸更新（可被 _updateFiring 和主循环复用）
+  _updateProjectiles(dt) {
     const units = [...this.bossList, this.player, ...this.minions];
 
     // 更新弹丸
@@ -1154,11 +1175,6 @@ export class BattleScene {
     }
 
     this.projectiles = this.projectiles.filter(p => p.alive);
-
-    // 全部结束 → 回合结束
-    if (this.projectiles.length === 0 && this.pendingShots.length === 0) {
-      this._onShotsComplete();
-    }
   }
 
   // 场景互动物被击中
@@ -1213,29 +1229,30 @@ export class BattleScene {
       }
       this._addShake(3, 0.1);
     } else if (hit.type === 'ground') {
-      // 可破坏地面：大范围损坏（每发破坏 3 段 = 120px）
+      // 可破坏地面：超大范围损坏（每发破坏 7 段 = 280px）
       const segIdx = Math.floor(proj.x / 40);
       const seg = this.groundSegments[Math.max(0, Math.min(this.groundSegments.length - 1, segIdx))];
       if (seg && !seg.destroyed) {
-        seg.hp -= proj.damage * 0.6;
+        seg.hp -= proj.damage * 0.8;
         if (seg.hp <= 0) {
           seg.destroyed = true;
-          // 连带损坏左右各 1-2 段（扩大破坏范围）
-          for (let off = -2; off <= 2; off++) {
+          // 连带损坏左右各 3 段（扩大破坏范围到 280px）
+          for (let off = -3; off <= 3; off++) {
             if (off === 0) continue;
             const s2 = this.groundSegments[segIdx + off];
             if (s2 && !s2.destroyed) {
-              s2.hp -= (Math.abs(off) === 1 ? 50 : 25);
+              const dmg = Math.abs(off) === 1 ? 60 : Math.abs(off) === 2 ? 40 : 20;
+              s2.hp -= dmg;
               if (s2.hp <= 0) s2.destroyed = true;
             }
           }
           this.audio.play('destroy');
-          this.particles.push(...createHitParticles(proj.x, CONFIG.GROUND_Y, CONFIG.COLORS.groundDark || '#6B5B3F', 20, 2.2));
-          this._addShake(8, 0.25);
+          this.particles.push(...createHitParticles(proj.x, CONFIG.GROUND_Y, CONFIG.COLORS.groundDark || '#6B5B3F', 28, 2.5));
+          this._addShake(10, 0.3);
         } else {
           this.audio.play('hit');
-          this.particles.push(...createHitParticles(proj.x, CONFIG.GROUND_Y, CONFIG.COLORS.ground || '#8B7355', 10));
-          this._addShake(4, 0.12);
+          this.particles.push(...createHitParticles(proj.x, CONFIG.GROUND_Y, CONFIG.COLORS.ground || '#8B7355', 12));
+          this._addShake(5, 0.15);
         }
       }
       const decal = createDecal(proj.x, CONFIG.GROUND_Y, 'ground');
