@@ -21,7 +21,7 @@ export const SKILLS = {
   },
   justice: {
     id: 'justice', name: '没有正义感', type: 'single',
-    ap: 3, cdMax: 8, baseDamage: 45, count: 1, interval: 0, spread: 0,
+    ap: 5, cdMax: 8, baseDamage: 45, count: 1, interval: 0, spread: 0,
     desc: '高伤单发，45 伤',
     unlock: 'start', color: '#556270', icon: '义', isTracking: false,
   },
