@@ -503,8 +503,26 @@ export class MenuScene {
     ctx.fillText('班级弹射对战', W / 2, 168 + bob);
     ctx.fillStyle = 'rgba(255,255,255,0.45)';
     ctx.font = `18px ${FONT}`;
-    ctx.fillText('拖拽蓄力 · 抛物线 · 弱点暴击 · 三大老师支线', W / 2, 208 + bob);
+    ctx.fillText('拖拽蓄力 · 可破坏地面 · 大招瞄准 · 手动移动', W / 2, 208 + bob);
     ctx.textAlign = 'left';
+
+    // 装饰：漂浮的铅笔和书本
+    for (let i = 0; i < 6; i++) {
+      const px = (i * 260 + this.t * 20) % (W + 100) - 50;
+      const py = 240 + Math.sin(this.t * 0.8 + i * 1.3) * 15 + i * 8;
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(Math.sin(this.t * 0.5 + i) * 0.1);
+      ctx.globalAlpha = 0.06;
+      ctx.fillStyle = ['#FF6B6B','#4ECDC4','#FFD666','#BA68C8','#81C784','#64B5F6'][i];
+      ctx.fillRect(-12, -3, 24, 6);
+      ctx.beginPath();
+      ctx.moveTo(12, -3);
+      ctx.lineTo(18, 0);
+      ctx.lineTo(12, 3);
+      ctx.fill();
+      ctx.restore();
+    }
 
     // 主按钮 3×3
     const cw = 400, ch = 148, gx = 40, gy = 30;
