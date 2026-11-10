@@ -154,6 +154,18 @@ export class BattleScene {
     const factory = TERRAIN_FACTORIES[this.bossId] || TERRAIN_FACTORIES.jin;
     this.terrain = factory();
 
+    // --- 可破坏地面分段 ---
+    const segW = 40;
+    const segCount = Math.ceil(CONFIG.WIDTH / segW);
+    this.groundSegments = [];
+    for (let i = 0; i < segCount; i++) {
+      this.groundSegments.push({
+        x: i * segW, w: segW,
+        hp: CONFIG.GROUND_HP, maxHp: CONFIG.GROUND_HP,
+        destroyed: false,
+      });
+    }
+
     // --- 系统 ---
     this.atb = new ATBSystem();
     this.atb.register(this.player);
@@ -205,6 +217,13 @@ export class BattleScene {
     this.bossActionPhase = 0;
     this.bossActionTimer = 0;
 
+    // --- 移动键状态 ---
+    this._moveLeft = false;
+    this._moveRight = false;
+    this._moveBtnLeft = false;
+    this._moveBtnRight = false;
+    this._pendingAimMode = null; // 用于大招/风筝瞄准
+
     // 韩老师口答 / 吴老师纪律
     this.quiz = null;
     this.discipline = null;
@@ -223,6 +242,19 @@ export class BattleScene {
     this.input = new Input(this.canvas, CONFIG.WIDTH, CONFIG.HEIGHT);
     this.input.onPointerDown = (x, y) => this._onPointerDown(x, y);
     this.input.onPointerUp = (x, y) => this._onPointerUp(x, y);
+
+    // --- 键盘移动支持 ---
+    this._keyHandler = (e) => {
+      if (e.type === 'keydown') {
+        if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') this._moveLeft = true;
+        if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') this._moveRight = true;
+      } else {
+        if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') this._moveLeft = false;
+        if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') this._moveRight = false;
+      }
+    };
+    window.addEventListener('keydown', this._keyHandler);
+    window.addEventListener('keyup', this._keyHandler);
 
     // --- 循环 ---
     this.loop = new GameLoop(
@@ -396,6 +428,12 @@ export class BattleScene {
         this._updateWaiting(scaledDt);
         break;
       case BS.PLAYER_TURN:
+        this._updatePlayerMovement(scaledDt);
+        // 检查 Boss/小怪是否掉落
+        for (const b of this.bossList) this._checkGroundFall(b);
+        for (const m of this.minions) this._checkGroundFall(m);
+        for (const b of this.bossList) this._updateFalling(b, scaledDt);
+        for (const m of this.minions) this._updateFalling(m, scaledDt);
         break; // 等待输入
       case BS.PLAYER_AIMING:
         this._updatePlayerAimingState(scaledDt);
@@ -466,6 +504,9 @@ export class BattleScene {
   }
 
   _onPointerUp(x, y) {
+    // 释放移动按钮
+    this._moveBtnLeft = false;
+    this._moveBtnRight = false;
     if (!this._aimDragging) return;
     this._aimDragging = false;
     if (this.state !== BS.PLAYER_AIMING) return;
@@ -497,7 +538,6 @@ export class BattleScene {
       if (x >= sx && x <= sx + skillSize && y >= ay && y <= ay + skillSize) {
         if (!this.modState.skillAllowed) { this._floatText('本关禁用技能', '#FF6B6B'); return true; }
         if (this.status.isSilenced(this.player)) { this._floatText('被沉默', '#7B68EE'); return true; }
-        if (!this.atb.isReady(this.player, sid)) { this._floatText('冷却中', '#9E9E9E'); return true; }
         if (this.player.ap < skill.ap) { this._floatText('行动力不足', '#FF6B6B'); return true; }
         this.aimMode = sid;
         this.state = BS.PLAYER_AIMING;
@@ -515,10 +555,31 @@ export class BattleScene {
       const ix = itemStartX + i * (itemSize + 10);
       const iy = ay + 4;
       if (x >= ix && x <= ix + itemSize && y >= iy && y <= iy + itemSize) {
-        if (this.player.ap >= item.ap) this._useItem(iid);
-        else this._floatText('行动力不足', '#FF6B6B');
+        if (this.player.ap < item.ap) { this._floatText('行动力不足', '#FF6B6B'); return true; }
+        // 风筝道具进入手动瞄准模式
+        if (iid === 'kite') {
+          this._pendingAimMode = 'kite';
+          this.aimMode = 'kite';
+          this.state = BS.PLAYER_AIMING;
+          return true;
+        }
+        this._useItem(iid);
         return true;
       }
+    }
+
+    // 移动按钮（左下角）
+    const moveBtnR = 30;
+    const moveBtnLY = ay + 45;
+    const moveBtnLX = 20;
+    const moveBtnRX = 90;
+    if (Math.hypot(x - moveBtnLX, y - moveBtnLY) <= moveBtnR) {
+      this._moveBtnLeft = true;
+      return true;
+    }
+    if (Math.hypot(x - moveBtnRX, y - moveBtnLY) <= moveBtnR) {
+      this._moveBtnRight = true;
+      return true;
     }
 
     // 大招按钮
@@ -584,6 +645,39 @@ export class BattleScene {
       target.hp = 0;
       this._onUnitDeath(target);
     }
+  }
+
+  // 风筝手动瞄准发射
+  _fireKite(angle, speed) {
+    const item = ITEMS['kite'];
+    if (!item) return;
+    const idx = this.player.items.indexOf('kite');
+    if (idx < 0) return;
+    this.player.items.splice(idx, 1);
+    this.atb.consumeAP(this.player, item.ap);
+
+    const lv = (this.saveData.itemLevels && this.saveData.itemLevels['kite']) || 1;
+    const itemMul = itemEffectMul(item, lv) * (1 + (this.talent.itemPct || 0) / 100);
+    const dist = (item.distance || 180) * itemMul;
+
+    // 沿瞄准方向位移
+    const dx = Math.cos(angle) * dist;
+    const dy = Math.sin(angle) * dist;
+    const oldX = this.player.x;
+    const oldY = this.player.y;
+    this.player.x = Math.max(60, Math.min(CONFIG.WIDTH - 60, this.player.x + dx));
+    this.player.y = Math.max(80, Math.min(CONFIG.GROUND_Y - this.player.radius, this.player.y + dy));
+
+    // 风筝飞行特效
+    this._floatText('风筝!', '#29B6F6', oldX, oldY - 40, 24);
+    this.particles.push(...createHitParticles(oldX, oldY, '#29B6F6', 10, 1.2));
+    this.audio.play('hit');
+
+    // 检查落地后是否站在洞上
+    this._checkGroundFall(this.player);
+
+    // 风筝使用后不结束回合，回到待命
+    this.state = BS.PLAYER_TURN;
   }
 
   _useItem(iid) {
@@ -688,6 +782,61 @@ export class BattleScene {
     // 松手发射由 _onPointerUp 处理，这里只做空转
   }
 
+  // ===== 玩家移动 =====
+  _updatePlayerMovement(dt) {
+    const p = this.player;
+    if (p.dead) return;
+    let dx = 0;
+    if (this._moveLeft || this._moveBtnLeft) dx -= 1;
+    if (this._moveRight || this._moveBtnRight) dx += 1;
+    if (dx !== 0) {
+      p.x += dx * CONFIG.PLAYER_MOVE_SPEED * dt;
+      p.x = Math.max(60, Math.min(CONFIG.WIDTH - 60, p.x));
+      p.facing = dx > 0 ? 1 : -1;
+    }
+    // 检查是否站在可破坏地面空洞上方 → 掉落
+    this._checkGroundFall(p);
+  }
+
+  // 获取某 x 位置的有效地面 Y（用于阴影绘制）
+  _groundYAt(x) {
+    const segIdx = Math.floor(x / 40);
+    if (this.groundSegments && this.groundSegments[segIdx] && this.groundSegments[segIdx].destroyed) {
+      return CONFIG.HEIGHT; // 空洞位置返回画布底部
+    }
+    return CONFIG.GROUND_Y;
+  }
+
+  // 检查单位是否站在被破坏的地面段上方
+  _checkGroundFall(unit) {
+    if (unit.dead || unit.falling) return;
+    const segIdx = Math.floor(unit.x / 40);
+    const seg = this.groundSegments[segIdx];
+    if (seg && seg.destroyed) {
+      // 检查相邻段是否也被破坏（扩大洞口）
+      const seg2 = this.groundSegments[segIdx + 1];
+      const seg0 = this.groundSegments[segIdx - 1];
+      if ((seg2 && seg2.destroyed) || (seg0 && seg0.destroyed) || unit.radius > seg.w / 2) {
+        unit.falling = true;
+        unit.fallVy = 0;
+      }
+    }
+  }
+
+  // 更新掉落中的单位
+  _updateFalling(unit, dt) {
+    if (!unit.falling) return;
+    unit.fallVy = (unit.fallVy || 0) + CONFIG.GRAVITY * dt;
+    unit.y += unit.fallVy * dt;
+    if (unit.y > CONFIG.HEIGHT + 100) {
+      // 掉出屏幕 → 死亡
+      unit.hp = 0;
+      unit.dead = true;
+      unit.falling = false;
+      this._onUnitDeath(unit);
+    }
+  }
+
   _firePlayerShot(dragDx, dragDy, dist) {
     const pendingSkill = this.aimMode !== 'normal' ? SKILLS[this.aimMode] : null;
     const needAP = pendingSkill ? pendingSkill.ap : CONFIG.NORMAL_SHOT_AP;
@@ -712,19 +861,34 @@ export class BattleScene {
 
     const aimMode = this.aimMode;
     this.aimMode = 'normal';
+
+    // 大招手动瞄准
+    if (aimMode === 'ult') {
+      this._fireUlt(angle, speed);
+      this.audio.play('shoot');
+      this._saveBattleState();
+      return;
+    }
+
+    // 风筝手动瞄准
+    if (aimMode === 'kite') {
+      this._fireKite(angle, speed);
+      this._saveBattleState();
+      return;
+    }
+
     this.state = BS.FIRING;
     this.atb.freeze();
     this.player.shotsThisTurn++;
 
     if (aimMode === 'normal' || !SKILLS[aimMode]) {
       this._fireWeapon(angle, speed);
-      this.atb.consumeAP(this.player, CONFIG.NORMAL_SHOT_AP);
+      // 普攻不消耗AP（NORMAL_SHOT_AP=0）
     } else {
       const skill = SKILLS[aimMode];
       this._fireSkill(skill, angle, speed);
       this.atb.consumeAP(this.player, skill.ap);
-      const cd = Math.max(1, (skill.cdMax || 5) - (this.talent.cdReduce || 0));
-      this.atb.startCooldown(this.player, aimMode, cd);
+      // 已取消技能独立冷却
     }
 
     this.audio.play('shoot');
@@ -910,7 +1074,7 @@ export class BattleScene {
       if (!proj.alive) continue;
 
       // 地形 / 单位碰撞
-      const hit = checkCollision(proj, this.terrain, units);
+      const hit = checkCollision(proj, this.terrain, units, this.groundSegments);
       if (hit) {
         this._handleHit(proj, hit);
         proj.alive = false;
@@ -995,11 +1159,27 @@ export class BattleScene {
       }
       this._addShake(3, 0.1);
     } else if (hit.type === 'ground') {
+      // 可破坏地面：损坏对应分段
+      const segIdx = Math.floor(proj.x / 40);
+      const seg = this.groundSegments[Math.max(0, Math.min(this.groundSegments.length - 1, segIdx))];
+      if (seg && !seg.destroyed) {
+        seg.hp -= proj.damage * 0.5;
+        if (seg.hp <= 0) {
+          seg.destroyed = true;
+          // 连带损坏相邻分段（扩大洞口）
+          const seg2 = this.groundSegments[segIdx + 1];
+          if (seg2 && !seg2.destroyed) { seg2.hp -= 30; if (seg2.hp <= 0) seg2.destroyed = true; }
+          this.audio.play('destroy');
+          this.particles.push(...createHitParticles(proj.x, CONFIG.GROUND_Y, CONFIG.COLORS.groundDark, 16, 1.8));
+          this._addShake(6, 0.2);
+        } else {
+          this.audio.play('hit');
+          this.particles.push(...createHitParticles(proj.x, CONFIG.GROUND_Y, CONFIG.COLORS.ground, 8));
+          this._addShake(3, 0.1);
+        }
+      }
       const decal = createDecal(proj.x, CONFIG.GROUND_Y, 'ground');
       this.decals.push(decal);
-      this.audio.play('hit');
-      this.particles.push(...createHitParticles(proj.x, CONFIG.GROUND_Y, CONFIG.COLORS.ground, 6));
-      this._addShake(2, 0.08);
     } else if (hit.type === 'unit') {
       this._dealDamageToUnit(proj, hit.unit);
     } else if (hit.type === 'weakpoint') {
@@ -1738,10 +1918,26 @@ export class BattleScene {
       this._floatText('怒气不足', '#9E9E9E');
       return;
     }
+    // 治疗类大招直接释放，无需瞄准
+    if (this.ult.type === 'heal') {
+      this._fireUlt(0, 0);
+      return;
+    }
+    // 进入大招瞄准模式（手动瞄准）
+    this._pendingAimMode = 'ult';
+    this.aimMode = 'ult';
+    this.state = BS.PLAYER_AIMING;
+    this._aimDragging = false;
+  }
+
+  // 执行大招发射（手动瞄准方向）
+  _fireUlt(angle, speed) {
     const ult = this.ult;
     resetRage(this.player);
     this.state = BS.FIRING;
     this.atb.freeze();
+    this.aimMode = 'normal';
+    this._pendingAimMode = null;
 
     if (ult.type === 'heal') {
       if (this.modState.healAllowed) {
@@ -1758,18 +1954,9 @@ export class BattleScene {
       return;
     }
 
-    const target = this._nearestEnemy();
     const src = this.player;
-    const tx = target ? target.x : CONFIG.WIDTH - 300;
-    const ty = target ? target.y - target.radius * 0.4 : CONFIG.GROUND_Y - 100;
-    const sy = src.y - src.radius / 2;
-    const dx = tx - src.x;
-    const speed = 640;
-    const t = Math.max(0.15, Math.abs(dx) / speed);
-    const vy = (ty - sy - 0.5 * CONFIG.GRAVITY * t * t) / t;
-    const vx = dx >= 0 ? speed : -speed;
-    const angle = Math.atan2(vy, vx);
-    const sp = Math.hypot(vx, vy);
+    const sp = speed;
+    const ang = angle;
 
     const opts = {
       aoeRadius: ult.aoeRadius || 0,
@@ -1785,22 +1972,23 @@ export class BattleScene {
       for (let i = 0; i < count; i++) {
         const tt = count > 1 ? i / (count - 1) - 0.5 : 0;
         this.pendingShots.push({
-          unit: src, angle: angle + tt * spread, speed: sp,
+          unit: src, angle: ang + tt * spread, speed: sp,
           dmg: ult.damage, color: ult.color, delay: i * 0.06,
           opts: { ...opts },
         });
       }
     } else if (ult.type === 'tracking') {
+      const target = this._nearestEnemy();
       const count = ult.count || 3;
       for (let i = 0; i < count; i++) {
         this.pendingShots.push({
-          unit: src, angle, speed: sp,
+          unit: src, angle: ang, speed: sp,
           dmg: ult.damage, color: ult.color, delay: i * 0.18,
           target, opts: { ...opts },
         });
       }
     } else {
-      this._spawnProjectile(src, angle, sp, ult.damage, ult.color, null, null, opts);
+      this._spawnProjectile(src, ang, sp, ult.damage, ult.color, null, null, opts);
     }
 
     this.audio.play('superCrit');
@@ -1902,6 +2090,29 @@ export class BattleScene {
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, CONFIG.WIDTH, CONFIG.GROUND_Y);
 
+    // 云朵装饰（填充更高天空）
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    const cloudSeeds = [[200,60],[600,90],[1100,50],[1400,100],[400,150],[900,130]];
+    for (const [cx, cy] of cloudSeeds) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, 30, 0, Math.PI * 2);
+      ctx.arc(cx + 25, cy + 5, 25, 0, Math.PI * 2);
+      ctx.arc(cx - 25, cy + 8, 22, 0, Math.PI * 2);
+      ctx.arc(cx + 10, cy - 15, 20, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 墙面装饰（黑板报/海报填充更高墙面）
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    for (let i = 0; i < 3; i++) {
+      const px = 100 + i * 500;
+      const py = 380;
+      ctx.fillRect(px, py, 120, 160);
+      ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(px, py, 120, 160);
+    }
+
     // 窗户（远景装饰）
     for (let i = 0; i < 4; i++) {
       const wx = 150 + i * 380;
@@ -1934,24 +2145,50 @@ export class BattleScene {
       ctx.fillRect(lx - 15, ly - 5, 30, 10);
     }
 
-    // 地面
-    ctx.fillStyle = CONFIG.COLORS.ground;
-    ctx.fillRect(0, CONFIG.GROUND_Y, CONFIG.WIDTH, CONFIG.HEIGHT - CONFIG.GROUND_Y);
+    // 地面（可破坏分段渲染）
+    for (const seg of this.groundSegments) {
+      if (seg.destroyed) continue;
+      const damageRatio = 1 - seg.hp / seg.maxHp;
+      // 基础地面色
+      ctx.fillStyle = damageRatio > 0.5 ? CONFIG.COLORS.groundDark : CONFIG.COLORS.ground;
+      ctx.fillRect(seg.x, CONFIG.GROUND_Y, seg.w, CONFIG.HEIGHT - CONFIG.GROUND_Y);
+      // 裂纹效果（受损越严重裂纹越多）
+      if (damageRatio > 0.2) {
+        ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+        ctx.lineWidth = 1 + damageRatio * 2;
+        ctx.beginPath();
+        ctx.moveTo(seg.x + seg.w * 0.2, CONFIG.GROUND_Y);
+        ctx.lineTo(seg.x + seg.w * 0.5, CONFIG.GROUND_Y + 20 + damageRatio * 30);
+        ctx.lineTo(seg.x + seg.w * 0.8, CONFIG.GROUND_Y + 10);
+        ctx.stroke();
+      }
+      if (damageRatio > 0.6) {
+        ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(seg.x + seg.w * 0.1, CONFIG.GROUND_Y + 5);
+        ctx.lineTo(seg.x + seg.w * 0.3, CONFIG.GROUND_Y + 40);
+        ctx.lineTo(seg.x + seg.w * 0.7, CONFIG.GROUND_Y + 25);
+        ctx.lineTo(seg.x + seg.w * 0.9, CONFIG.GROUND_Y + 50);
+        ctx.stroke();
+      }
+    }
 
-    // 地面瓷砖纹理
+    // 地面瓷砖纹理（仅未被破坏的区域）
     ctx.strokeStyle = 'rgba(0,0,0,0.08)';
     ctx.lineWidth = 1;
-    for (let x = 0; x < CONFIG.WIDTH; x += 60) {
+    for (const seg of this.groundSegments) {
+      if (seg.destroyed) continue;
       ctx.beginPath();
-      ctx.moveTo(x, CONFIG.GROUND_Y);
-      ctx.lineTo(x, CONFIG.HEIGHT);
+      ctx.moveTo(seg.x, CONFIG.GROUND_Y);
+      ctx.lineTo(seg.x, CONFIG.HEIGHT);
       ctx.stroke();
-    }
-    for (let y = CONFIG.GROUND_Y; y < CONFIG.HEIGHT; y += 30) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(CONFIG.WIDTH, y);
-      ctx.stroke();
+      for (let yy = CONFIG.GROUND_Y; yy < CONFIG.HEIGHT; yy += 30) {
+        ctx.beginPath();
+        ctx.moveTo(seg.x, yy);
+        ctx.lineTo(seg.x + seg.w, yy);
+        ctx.stroke();
+      }
     }
   }
 
@@ -2099,14 +2336,31 @@ export class BattleScene {
     const y = p.y;
     const r = p.radius;
 
-    // 阴影
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
-    ctx.beginPath();
-    ctx.ellipse(x, CONFIG.GROUND_Y, r * 0.8, r * 0.25, 0, 0, Math.PI * 2);
-    ctx.fill();
+    // 掉落状态：旋转 + 渐隐
+    if (p.falling) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate((Date.now() / 200) % (Math.PI * 2));
+      ctx.globalAlpha = 0.7;
+      ctx.translate(-x, -y);
+    }
 
-    // 身体（Q版圆头）
-    ctx.fillStyle = '#4ECDC4';
+    // 阴影（检查地面是否被破坏）
+    const segIdx = Math.max(0, Math.min(this.groundSegments.length - 1, Math.floor(x / 40)));
+    const groundSeg = this.groundSegments[segIdx];
+    if (!groundSeg || !groundSeg.destroyed) {
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(x, this._groundYAt(x), r * 0.8, r * 0.25, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 身体（Q版圆头，渐变着色）
+    const grad = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.2, x, y, r);
+    grad.addColorStop(0, '#6FE5DC');
+    grad.addColorStop(0.6, '#4ECDC4');
+    grad.addColorStop(1, '#3AA89F');
+    ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fill();
@@ -2114,42 +2368,69 @@ export class BattleScene {
     ctx.lineWidth = 3;
     ctx.stroke();
 
-    // 眼睛
+    // 书包（背后小书包）
+    ctx.fillStyle = '#5D4037';
+    ctx.beginPath();
+    ctx.arc(x - p.facing * (r * 0.7), y + 2, r * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#3E2723';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // 眼睛（根据朝向偏移）
+    const eyeOff = p.facing * 2;
+    ctx.fillStyle = '#FFF';
+    ctx.beginPath();
+    ctx.arc(x + 8 + eyeOff, y - 5, 5, 0, Math.PI * 2);
+    ctx.arc(x + 18 + eyeOff, y - 5, 5, 0, Math.PI * 2);
+    ctx.fill();
     ctx.fillStyle = '#333';
     ctx.beginPath();
-    ctx.arc(x + 8, y - 5, 4, 0, Math.PI * 2);
-    ctx.arc(x + 18, y - 5, 4, 0, Math.PI * 2);
+    ctx.arc(x + 9 + eyeOff, y - 4, 3, 0, Math.PI * 2);
+    ctx.arc(x + 19 + eyeOff, y - 4, 3, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#FFF';
     ctx.beginPath();
-    ctx.arc(x + 9, y - 6, 1.5, 0, Math.PI * 2);
-    ctx.arc(x + 19, y - 6, 1.5, 0, Math.PI * 2);
+    ctx.arc(x + 10 + eyeOff, y - 5, 1.2, 0, Math.PI * 2);
+    ctx.arc(x + 20 + eyeOff, y - 5, 1.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 腮红
+    ctx.fillStyle = 'rgba(255,150,150,0.35)';
+    ctx.beginPath();
+    ctx.arc(x + 4, y + 6, 4, 0, Math.PI * 2);
+    ctx.arc(x + 24, y + 6, 4, 0, Math.PI * 2);
     ctx.fill();
 
     // 嘴巴
     ctx.strokeStyle = '#333';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(x + 13, y + 4, 5, 0.2, Math.PI - 0.2);
+    ctx.arc(x + 13 + eyeOff * 0.5, y + 5, 5, 0.2, Math.PI - 0.2);
     ctx.stroke();
 
-    // 帽子（小帽子增加辨识度）
+    // 帽子（棒球帽风格）
     ctx.fillStyle = '#FF6B6B';
     ctx.beginPath();
-    ctx.moveTo(x - 15, y - r + 5);
-    ctx.lineTo(x + 15, y - r + 5);
-    ctx.lineTo(x + 5, y - r - 12);
-    ctx.lineTo(x - 5, y - r - 12);
-    ctx.closePath();
+    ctx.arc(x, y - r * 0.75, r * 0.65, Math.PI, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = '#C0392B';
     ctx.lineWidth = 2;
     ctx.stroke();
-    // 帽子绒球
-    ctx.fillStyle = '#FFE66D';
+    // 帽檐
+    ctx.fillStyle = '#E55656';
     ctx.beginPath();
-    ctx.arc(x, y - r - 14, 5, 0, Math.PI * 2);
+    ctx.ellipse(x + p.facing * r * 0.5, y - r * 0.55, r * 0.5, r * 0.15, 0, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = '#C0392B';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // 帽顶小星星
+    ctx.fillStyle = '#FFE66D';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('★', x, y - r * 0.95);
+    ctx.textAlign = 'left';
 
     // 状态效果图标
     if (this.status.has(p, 'shield')) {
@@ -2187,6 +2468,8 @@ export class BattleScene {
         ctx.stroke();
       }
     }
+
+    if (p.falling) ctx.restore();
   }
 
   // ===== Boss 渲染 =====
@@ -2203,11 +2486,22 @@ export class BattleScene {
     const y = b.y;
     const r = b.radius;
 
-    // 阴影
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
-    ctx.beginPath();
-    ctx.ellipse(x, CONFIG.GROUND_Y, r * 0.9, r * 0.3, 0, 0, Math.PI * 2);
-    ctx.fill();
+    // 掉落状态：旋转 + 渐隐
+    if (b.falling) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate((Date.now() / 200 + b.id) % (Math.PI * 2));
+      ctx.globalAlpha = 0.7;
+      ctx.translate(-x, -y);
+    }
+
+    // 阴影（仅未掉落时绘制）
+    if (!b.falling) {
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.beginPath();
+      ctx.ellipse(x, this._groundYAt(x), r * 0.9, r * 0.3, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     // Boss 主体
     ctx.fillStyle = b.color || '#FF6B6B';
@@ -2258,6 +2552,8 @@ export class BattleScene {
       ctx.fillStyle = '#FF4500';
       ctx.fillRect(barX, barY, barW * (1 - hpRatio * 2), 6);
     }
+
+    if (b.falling) ctx.restore();
   }
 
   // 金老师特征：眼镜 + 严肃表情
@@ -2493,7 +2789,7 @@ export class BattleScene {
 
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
     ctx.beginPath();
-    ctx.ellipse(x, CONFIG.GROUND_Y, r * 0.8, r * 0.25, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, this._groundYAt(x), r * 0.8, r * 0.25, 0, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.fillStyle = '#FF9999';
@@ -2592,8 +2888,9 @@ export class BattleScene {
     const startX = this.player.x + Math.cos(angle) * (this.player.radius + 8);
     const startY = this.player.y - this.player.radius / 2 + Math.sin(angle) * (this.player.radius + 8);
 
-    // 逐帧模拟，遇到地形/地面/单位即停
+    // 逐帧模拟，截断为部分轨迹（只显示前段弹道）
     const step = 1 / 60;
+    const maxPoints = CONFIG.PREDICT_POINTS; // 截断点数
     const pts = [];
     let px = startX, py = startY;
     let pvx = Math.cos(angle) * speed, pvy = Math.sin(angle) * speed;
@@ -2601,14 +2898,20 @@ export class BattleScene {
     let stop = null;
     let hitUnit = false;
 
-    for (let i = 0; i < 200; i++) {
+    for (let i = 0; i < maxPoints; i++) {
       pvy += CONFIG.GRAVITY * step;
       pvx += this.wind.accel * step;
       px += pvx * step;
       py += pvy * step;
       pts.push({ x: px, y: py });
 
-      if (py >= CONFIG.GROUND_Y) { stop = { x: px, y: CONFIG.GROUND_Y }; break; }
+      if (py >= CONFIG.GROUND_Y) {
+        // 检查可破坏地面分段
+        const segIdx = Math.max(0, Math.min(this.groundSegments.length - 1, Math.floor(px / 40)));
+        const seg = this.groundSegments[segIdx];
+        if (!seg || !seg.destroyed) { stop = { x: px, y: CONFIG.GROUND_Y }; break; }
+        // 分段被破坏，弹道继续穿过
+      }
       if (px < -40 || px > CONFIG.WIDTH + 40) { stop = { x: px, y: py }; break; }
 
       let blocked = false;
@@ -2798,8 +3101,8 @@ export class BattleScene {
     let turnText = '';
     switch (this.state) {
       case BS.WAITING: turnText = '...'; break;
-      case BS.PLAYER_TURN: turnText = '你的回合 — 按住场地往后拉，松手发射'; break;
-      case BS.PLAYER_AIMING: turnText = this.aimMode === 'normal' ? '拖拽瞄准，松手发射' : '技能已选中 — 拖拽瞄准，松手发射'; break;
+      case BS.PLAYER_TURN: turnText = '你的回合 — 按住场地往后拉松手发射 | A/D或方向键移动'; break;
+      case BS.PLAYER_AIMING: turnText = this.aimMode === 'ult' ? '大招瞄准 — 拖拽方向，松手释放' : this.aimMode === 'kite' ? '风筝瞄准 — 拖拽方向，松手飞过去' : this.aimMode === 'normal' ? '拖拽瞄准，松手发射' : '技能已选中 — 拖拽瞄准，松手发射'; break;
       case BS.FIRING: turnText = ''; break;
       case BS.BOSS_TURN: case BS.BOSS_ACTING: turnText = `${(this.activeBoss || this.boss).name || 'Boss'} 的回合`; break;
       case BS.QUIZ: turnText = '口答时间！'; break;
@@ -2879,6 +3182,35 @@ export class BattleScene {
     const skillGap = 10;
     const startX = 300;
 
+    // 移动按钮（左下角圆形）
+    const moveBtnR = 30;
+    const moveBtnCY = y + 45;
+    const moveLX = 20, moveRX = 90;
+    // 左移按钮
+    ctx.fillStyle = this._moveBtnLeft ? 'rgba(78,205,196,0.5)' : 'rgba(0,0,0,0.4)';
+    ctx.beginPath();
+    ctx.arc(moveLX, moveBtnCY, moveBtnR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#4ECDC4';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = '#FFF';
+    ctx.font = 'bold 24px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('◀', moveLX, moveBtnCY + 8);
+    // 右移按钮
+    ctx.fillStyle = this._moveBtnRight ? 'rgba(78,205,196,0.5)' : 'rgba(0,0,0,0.4)';
+    ctx.beginPath();
+    ctx.arc(moveRX, moveBtnCY, moveBtnR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#4ECDC4';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = '#FFF';
+    ctx.font = 'bold 24px sans-serif';
+    ctx.fillText('▶', moveRX, moveBtnCY + 8);
+    ctx.textAlign = 'left';
+
     // 技能栏
     for (let i = 0; i < this.player.skills.length; i++) {
       const sid = this.player.skills[i];
@@ -2907,20 +3239,6 @@ export class BattleScene {
       ctx.font = 'bold 10px sans-serif';
       ctx.fillText(skill.ap + 'AP', sx + skillSize / 2, sy + 50);
       ctx.textAlign = 'left';
-
-      // 黑色扇形 CD 遮罩
-      if (!isReady) {
-        const cdProgress = this.atb.getCDProgress(this.player, sid, skill.cdMax);
-        if (cdProgress > 0) {
-          ctx.fillStyle = CONFIG.COLORS.cdBlack;
-          ctx.beginPath();
-          ctx.moveTo(sx + skillSize / 2, sy + skillSize / 2);
-          ctx.arc(sx + skillSize / 2, sy + skillSize / 2, skillSize / 2,
-            -Math.PI / 2, -Math.PI / 2 + cdProgress * Math.PI * 2);
-          ctx.closePath();
-          ctx.fill();
-        }
-      }
     }
 
     // 道具栏
@@ -3212,5 +3530,9 @@ export class BattleScene {
   stop() {
     this.loop.stop();
     if (this.input) this.input.destroy();
+    if (this._keyHandler) {
+      window.removeEventListener('keydown', this._keyHandler);
+      window.removeEventListener('keyup', this._keyHandler);
+    }
   }
 }
