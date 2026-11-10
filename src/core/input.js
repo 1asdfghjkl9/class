@@ -3,7 +3,7 @@
 // ============================================================
 
 export class Input {
-  constructor(canvas, logicalW = 1600, logicalH = 900) {
+  constructor(canvas, logicalW = 1600, logicalH = 1200) {
     this.canvas = canvas;
     this.logicalW = logicalW;
     this.logicalH = logicalH;
