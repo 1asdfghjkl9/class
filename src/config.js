@@ -20,8 +20,8 @@ export const CONFIG = {
   SLOWMO_DURATION: 0.15,
   SLOWMO_SCALE: 0.4,
   SUPER_CRIT_SLOWMO: 0.3,
-  PREDICT_POINTS: 8,
-  PREDICT_TIME: 0.35,
+  PREDICT_POINTS: 10,
+  PREDICT_TIME: 0.4,
 
   // ---------- ATB ----------
   ATB_MAX: 100,
