@@ -23,6 +23,7 @@ import {
   equipSkill, equipWeapon,
 } from '../meta/economy.js';
 import { saveData, resetSave, createDefaultSave, expForLevel } from '../save.js';
+import { Account } from '../account.js';
 
 const FONT = '"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif';
 const W = CONFIG.WIDTH;
@@ -115,6 +116,7 @@ export class MenuScene {
     switch (key) {
       case 'page': this.page = arg; this.hits = []; break;
       case 'home': this.page = 'home'; break;
+      case 'account': this._showAccountDialog(); break;
       case 'subjectTab': this.subjectTab = arg; break;
       case 'shopTab': this.shopTab = arg; break;
       case 'fightBoss': this._startBoss(arg); break;
@@ -194,6 +196,19 @@ export class MenuScene {
     this.save = fresh;
     this.page = 'home';
     this._toast('存档已重置');
+  }
+
+  _showAccountDialog() {
+    const name = prompt('输入用户名（新用户自动注册）：', (window.__account && window.__account.name) || '');
+    if (!name || !name.trim()) return;
+    const pwd = prompt('输入密码：', '');
+    if (pwd === null) return;
+    if (Account.login(name.trim(), pwd)) {
+      this.save = Save.load();
+      this._toast('登录成功：' + name.trim());
+    } else {
+      this._toast('登录失败：密码错误');
+    }
   }
 
   // ---------- 战斗入口 ----------
@@ -530,14 +545,14 @@ export class MenuScene {
     const startY = 268;
 
     const cells = [
-      { label: '主线挑战', sub: '金 / 韩 / 吴 三位老师', color: '#FF6B6B', action: 'page:bosses', icon: '主' },
+      { label: '主线挑战', sub: '金 / 韩 / 吴 / 丁 / 黄 五位老师', color: '#FF6B6B', action: 'page:bosses', icon: '主' },
       { label: '学科线', sub: '语文 → 数学 → 英语', color: '#4ECDC4', action: 'page:subjects', icon: '科' },
       { label: '商店', sub: '武器 · 技能 · 道具 · 资源', color: '#FFD666', action: 'page:shop', icon: '商' },
       { label: '天赋', sub: `未分配 ${s.talents.points} 点`, color: '#FF8A65', action: 'page:talents', icon: '天' },
       { label: '成就', sub: `${Object.keys(s.achievements.unlocked || {}).length}/${ACHIEVEMENT_LIST.length}`, color: '#BA68C8', action: 'page:achievements', icon: '成' },
       { label: '挑战', sub: '叠加条件换高额金币', color: '#81C784', action: 'page:challenges', icon: '挑' },
       { label: '设置', sub: '难度 · 大招 · 音效', color: '#90A4AE', action: 'page:settings', icon: '设' },
-      { label: '图鉴', sub: '12 技能 / 10 道具 / 6 武器', color: '#64B5F6', action: 'page:shop', icon: '鉴' },
+      { label: '图鉴', sub: '16 技能 / 10 道具 / 6 武器', color: '#64B5F6', action: 'page:shop', icon: '鉴' },
       { label: '开始战斗', sub: allBossesCleared(s) ? '三位老师全部通过' : '从主线开始', color: '#FFFFFF', action: 'page:bosses', icon: '战' },
     ];
 
@@ -568,12 +583,21 @@ export class MenuScene {
     // 底部条：难度 / 大招 / 音效
     const by = H - 96;
     this._card(ctx, 40, by, W - 80, 72, { fill: 'rgba(0,0,0,0.32)' });
+
+    // 账号显示
     ctx.fillStyle = 'rgba(255,255,255,0.42)';
     ctx.font = `13px ${FONT}`;
-    ctx.fillText('难度', 62, by + 28);
+    ctx.textAlign = 'left';
+    const acct = (window.__account && window.__account.name) ? window.__account.name : '游客';
+    ctx.fillText('账号', 62, by + 28);
+    this._button(ctx, 110, by + 14, 120, 44, acct, 'account', { size: 15, color: '#4ECDC4' });
+
+    ctx.fillStyle = 'rgba(255,255,255,0.42)';
+    ctx.font = `13px ${FONT}`;
+    ctx.fillText('难度', 248, by + 28);
     const diffs = ['normal', 'hard', 'nightmare'];
     const names = { normal: '普通', hard: '困难', nightmare: '噩梦' };
-    let dx = 110;
+    let dx = 296;
     for (const d of diffs) {
       this._button(ctx, dx, by + 14, 96, 44, names[d], 'setDiff:' + d, {
         active: s.settings.difficulty === d, size: 17,
@@ -604,9 +628,9 @@ export class MenuScene {
   // ============================================================
   _render_bosses(ctx) {
     const s = this.save;
-    const ids = ['jin', 'han', 'wu'];
-    const cw = 440, ch = 560, gx = 40;
-    const startX = (W - (cw * 3 + gx * 2)) / 2;
+    const ids = ['jin', 'han', 'wu', 'lv', 'ma'];
+    const cw = 340, ch = 520, gx = 24;
+    const startX = (W - (cw * 5 + gx * 4)) / 2;
     const y = 140;
 
     for (let i = 0; i < ids.length; i++) {
