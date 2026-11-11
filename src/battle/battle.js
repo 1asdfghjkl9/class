@@ -1806,7 +1806,10 @@ export class BattleScene {
             } else {
               // 近身冲撞
               const dmg = Math.round((unit.shotBaseDamage || 16) * 1.5 * (unit.buffMul || 1));
-              this._dealDamage(target, dmg, { type: 'melee' });
+              target.hp -= dmg;
+              if (target.hp <= 0) { target.hp = 0; target.dead = true; target.falling = true; }
+              this._floatText('-' + dmg, '#FF5722', target.x, target.y - target.radius - 30, 22);
+              this._addShake(8, 0.3);
               this._floatText('冲撞！', '#FF5722', target.x, target.y - target.radius - 30, 22);
               this.audio.play('hit');
             }
