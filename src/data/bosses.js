@@ -108,9 +108,75 @@ export const MINION = {
   shotSpeed: 500,
 };
 
+// ===== 美术老师（丁老师）=====
+export const BOSS_DING = {
+  id: 'ding',
+  name: '丁老师',
+  title: '色彩暴君',
+  hp: 300,
+  speed: 21,
+  dr: 0.08,
+  patrolMin: 850,
+  patrolMax: 1150,
+  patrolSpeed: 42,
+  radius: 34,
+  enrageThreshold: 0.25,
+  rollCallInterval: 3,
+  dragClassInterval: 2,
+  weakpoints: [
+    { id: 'palette', name: '调色盘', hp: 28, offsetX: -8, offsetY: 16, radius: 16, color: '#FF6B6B', breakEffect: 'no_drag' },
+    { id: 'brush', name: '大号画笔', hp: 36, offsetX: -34, offsetY: -24, radius: 18, color: '#8BC34A', breakEffect: 'no_rollcall' },
+  ],
+  quotes: {
+    intro: '今天画静物写生，谁画不好重画一百遍。',
+    rollCall: '你，上来说说这个色彩关系。',
+    dragClass: '这张没画完不许下课。',
+    enrage: '你给我出去，对着走廊画！',
+  },
+  aimError: 32,
+  shotBaseDamage: 13,
+  shotSpeed: 620,
+  color: '#FF9800',
+};
+
+// ===== 体育老师（黄老师）=====
+export const BOSS_HUANG = {
+  id: 'huang',
+  name: '黄老师',
+  title: '体能魔王',
+  hp: 360,
+  speed: 24,
+  dr: 0.15,
+  homeX: 1050,
+  swayRange: 80,
+  swaySpeed: 28,
+  radius: 38,
+  rageThreshold: 0.45,
+  quizInterval: 2,
+  quizTimer: 5,
+  quizTimerBroken: 8,
+  paperCount: 6,
+  aimError: 28,
+  shotBaseDamage: 16,
+  shotSpeed: 680,
+  color: '#4CAF50',
+  weakpoints: [
+    { id: 'whistle', name: '银哨子', hp: 30, offsetX: -36, offsetY: 8, radius: 14, color: '#C0C0C0', breakEffect: 'quiz_interval_up' },
+    { id: 'stopwatch', name: '秒表', hp: 30, offsetX: -14, offsetY: -34, radius: 14, color: '#FF9800', breakEffect: 'quiz_timer_up' },
+  ],
+  quotes: {
+    intro: '全班跑十圈，跑不完的留下来！',
+    quizWrong: '这速度，体育中考怎么办？',
+    rage: '再加五圈，现在开始！',
+    defeatPlayer: '下节课补测。',
+  },
+};
+
 // ===== Boss 注册表 =====
 export const BOSSES = {
   jin: BOSS_JIN,
   han: BOSS_HAN,
   wu: BOSS_WU,
+  lv: BOSS_DING,
+  ma: BOSS_HUANG,
 };
