@@ -100,6 +100,42 @@ export const SKILLS = {
     unlock: 'fragment', fragments: 8,
     color: '#C89B6A', icon: '桌', isTracking: false,
   },
+
+  // ===== 美术线技能 =====
+  paint: {
+    id: 'paint', name: '颜料泼溅', type: 'aoe',
+    ap: 3, cdMax: 7, baseDamage: 25, aoeRadius: 140,
+    desc: '落点 140 半径内造成 25 伤，留下颜料减速区域 2 回合',
+    unlock: 'progress', unlockText: '通关吕老师支线',
+    unlockCond: { type: 'boss', id: 'lv' },
+    color: '#E91E63', icon: '颜', isTracking: false,
+  },
+  sketch: {
+    id: 'sketch', name: '速写铅笔', type: 'multi',
+    ap: 2, cdMax: 6, baseDamage: 7, count: 4, interval: 0.12, spread: 0,
+    desc: '4 连发，每发 7 伤，穿透目标',
+    unlock: 'progress', unlockText: '通关吕老师支线',
+    unlockCond: { type: 'boss', id: 'lv' },
+    color: '#795548', icon: '写', isTracking: false,
+  },
+
+  // ===== 体育线技能 =====
+  sprint: {
+    id: 'sprint', name: '百米冲刺', type: 'utility',
+    ap: 2, cdMax: 5, baseDamage: 0,
+    desc: '瞬间移到落点位置，获得 1 回合闪避',
+    unlock: 'progress', unlockText: '通关马老师支线',
+    unlockCond: { type: 'boss', id: 'ma' },
+    color: '#4CAF50', icon: '冲', isTracking: false,
+  },
+  ball: {
+    id: 'ball', name: '实心球', type: 'single',
+    ap: 3, cdMax: 7, baseDamage: 38, effect: 'knockback', effectValue: 180,
+    desc: '高伤单发 38 伤，击退 180px',
+    unlock: 'progress', unlockText: '通关马老师支线',
+    unlockCond: { type: 'boss', id: 'ma' },
+    color: '#FF5722', icon: '球', isTracking: false,
+  },
 };
 
 // 开局自带
