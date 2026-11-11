@@ -85,12 +85,12 @@ export class BossAI {
     let leadX = 0;
     if (this.battle._moveLeft || this.battle._moveBtnLeft) leadX = -CONFIG.PLAYER_MOVE_SPEED * 0.3;
     if (this.battle._moveRight || this.battle._moveBtnRight) leadX = CONFIG.PLAYER_MOVE_SPEED * 0.3;
-    const aimErr = (u.aimError || 45) * 0.5; // 误差减半
+    const aimErr = (u.aimError || 45) * 0.35; // 误差再降（0.5→0.35）
     const tx = target.x + leadX + (Math.random() - 0.5) * (aimErr * 2 / Math.max(0.3, accMul));
     const ty = target.y - target.radius;
     const dx = tx - bx;
     const dy = ty - by;
-    const speed = (u.shotSpeed ?? 600) * 1.15; // 射速提升 15%
+    const speed = (u.shotSpeed ?? 600) * 1.25; // 射速提升 25%（原15%）
     const dir = dx >= 0 ? 1 : -1;
     const vx = dir * speed;
     const t = Math.max(0.1, Math.abs(dx) / speed);
@@ -106,6 +106,8 @@ export class BossAI {
       case 'jin': return this._jinDecide();
       case 'han': return this._hanDecide();
       case 'wu':  return this._wuDecide();
+      case 'lv':  return this._lvDecide();
+      case 'ma':  return this._maDecide();
       default:    return this._studentDecide();
     }
   }
@@ -207,6 +209,53 @@ export class BossAI {
     return { type: 'normal_shot' };
   }
 
+  // ===== 美术老师（吕老师）AI =====
+  _lvDecide() {
+    const u = this.unit;
+    const hpRatio = u.hp / u.maxHp;
+    let damageMul = 1;
+
+    // 低血狂暴
+    if (hpRatio <= 0.25) damageMul = 1.6;
+
+    // 每3回合：颜料泼溅（范围攻击）
+    if (this.turnCount % 3 === 0 && this.turnCount > 0) {
+      return { type: 'paint_splash', quote: u.quotes?.dragClass || '', damageMul };
+    }
+
+    // 每2回合：速写连射
+    if (this.turnCount % 2 === 0) {
+      return { type: 'sketch_burst', quote: '', damageMul };
+    }
+
+    return { type: 'normal_shot', quote: this.turnCount === 1 ? (u.quotes?.intro || '') : '', damageMul };
+  }
+
+  // ===== 体育老师（马老师）AI =====
+  _maDecide() {
+    const u = this.unit;
+    const hpRatio = u.hp / u.maxHp;
+    let damageMul = 1;
+
+    // 低血狂暴（更早触发，更强）
+    if (hpRatio <= 0.30) {
+      damageMul = 1.8;
+      u.buffMul = 1.8;
+    }
+
+    // 每3回合：实心球重击（高伤+击退）
+    if (this.turnCount % 3 === 0 && this.turnCount > 0) {
+      return { type: 'ball_throw', quote: u.quotes?.quizWrong || '', damageMul };
+    }
+
+    // 每2回合：冲刺+冲撞
+    if (this.turnCount % 2 === 0) {
+      return { type: 'sprint_charge', quote: '', damageMul };
+    }
+
+    return { type: 'normal_shot', quote: this.turnCount === 1 ? (u.quotes?.intro || '') : '', damageMul };
+  }
+
   // ===== 学生 AI（学科线）=====
   _studentDecide() {
     const u = this.unit;
@@ -215,21 +264,26 @@ export class BossAI {
     let damageMul = 1;
 
     // 低血狂暴（更早触发）
-    if (mech.includes('buff_low_hp') && hpRatio <= 0.6) {
-      damageMul = 1.8;
-      u.buffMul = 1.8;
+    if (mech.includes('buff_low_hp') && hpRatio <= 0.65) {
+      damageMul = 2.0;
+      u.buffMul = 2.0;
     } else {
-      u.buffMul = 1.2; // 基础伤害提升
+      u.buffMul = 1.4; // 基础伤害提升（1.2→1.4）
     }
 
-    // 自我护盾
-    if (mech.includes('shield_self') && this.turnCount % 3 === 0) {
+    // 自我护盾（更频繁）
+    if (mech.includes('shield_self') && this.turnCount % 2 === 0) {
       return { type: 'shield_self', quote: u.quote || '' };
     }
 
-    // 双发
+    // 双发（更频繁）
     if (mech.includes('double_shot') && this.turnCount % 2 === 0) {
       return { type: 'double_shot', quote: u.quote || '', damageMul };
+    }
+
+    // 所有人每3回合有概率三连射
+    if (this.turnCount % 3 === 0 && this.turnCount > 1) {
+      return { type: 'triple_shot', quote: u.quote || '', damageMul };
     }
 
     return { type: 'normal_shot', quote: this.turnCount === 1 ? (u.quote || '') : '', damageMul };
