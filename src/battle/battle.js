@@ -2273,152 +2273,226 @@ export class BattleScene {
   _renderBackground(ctx) {
     const cfg = BOSSES[this.bossId] || this.stageCfg || null;
     const bgColor = (cfg && cfg.color) || '#FF6B6B';
+    const gy = CONFIG.GROUND_Y;
 
-    // 渐变天空
-    const grad = ctx.createLinearGradient(0, 0, 0, CONFIG.GROUND_Y);
-    grad.addColorStop(0, this._darkenColor(bgColor, 0.3));
-    grad.addColorStop(0.5, this._darkenColor(bgColor, 0.5));
-    grad.addColorStop(1, this._darkenColor(bgColor, 0.7));
+    // 渐变天空（更丰富的渐变）
+    const grad = ctx.createLinearGradient(0, 0, 0, gy);
+    grad.addColorStop(0, this._darkenColor(bgColor, 0.22));
+    grad.addColorStop(0.3, this._darkenColor(bgColor, 0.38));
+    grad.addColorStop(0.6, this._darkenColor(bgColor, 0.52));
+    grad.addColorStop(1, this._darkenColor(bgColor, 0.68));
     ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, CONFIG.WIDTH, CONFIG.GROUND_Y);
+    ctx.fillRect(0, 0, CONFIG.WIDTH, gy);
 
-    // 云朵装饰（填充更高天空）
-    ctx.fillStyle = 'rgba(255,255,255,0.08)';
-    const cloudSeeds = [[200,60],[600,90],[1100,50],[1400,100],[400,150],[900,130]];
+    // 远山剪影（多层视差）
+    ctx.fillStyle = 'rgba(0,0,0,0.08)';
+    ctx.beginPath();
+    ctx.moveTo(0, gy * 0.55);
+    for (let x = 0; x <= CONFIG.WIDTH; x += 80) {
+      ctx.lineTo(x, gy * 0.55 + Math.sin(x * 0.008) * 40 - 20);
+    }
+    ctx.lineTo(CONFIG.WIDTH, gy);
+    ctx.lineTo(0, gy);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,0.05)';
+    ctx.beginPath();
+    ctx.moveTo(0, gy * 0.65);
+    for (let x = 0; x <= CONFIG.WIDTH; x += 60) {
+      ctx.lineTo(x, gy * 0.65 + Math.cos(x * 0.012) * 30 - 15);
+    }
+    ctx.lineTo(CONFIG.WIDTH, gy);
+    ctx.lineTo(0, gy);
+    ctx.fill();
+
+    // 云朵装饰（更立体）
+    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    const cloudSeeds = [[200,60],[600,90],[1100,50],[1400,100],[400,180],[900,150],[1300,70]];
     for (const [cx, cy] of cloudSeeds) {
       ctx.beginPath();
-      ctx.arc(cx, cy, 30, 0, Math.PI * 2);
-      ctx.arc(cx + 25, cy + 5, 25, 0, Math.PI * 2);
-      ctx.arc(cx - 25, cy + 8, 22, 0, Math.PI * 2);
-      ctx.arc(cx + 10, cy - 15, 20, 0, Math.PI * 2);
+      ctx.arc(cx, cy, 32, 0, Math.PI * 2);
+      ctx.arc(cx + 28, cy + 6, 26, 0, Math.PI * 2);
+      ctx.arc(cx - 28, cy + 10, 24, 0, Math.PI * 2);
+      ctx.arc(cx + 12, cy - 18, 22, 0, Math.PI * 2);
+      ctx.arc(cx - 12, cy - 12, 18, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // 墙面装饰（黑板报/海报填充更高墙面）
-    ctx.fillStyle = 'rgba(255,255,255,0.06)';
-    for (let i = 0; i < 3; i++) {
-      const px = 100 + i * 500;
-      const py = 380;
-      ctx.fillRect(px, py, 120, 160);
-      ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(px, py, 120, 160);
+    // 天花板灯管（装饰）
+    for (let i = 0; i < 6; i++) {
+      const lx = 130 + i * 280;
+      const ly = 30;
+      // 灯管
+      ctx.fillStyle = 'rgba(255,255,220,0.12)';
+      ctx.fillRect(lx - 40, ly - 4, 80, 8);
+      // 光晕
+      const lightGrad = ctx.createRadialGradient(lx, ly + 4, 5, lx, ly + 4, 60);
+      lightGrad.addColorStop(0, 'rgba(255,255,220,0.08)');
+      lightGrad.addColorStop(1, 'rgba(255,255,220,0)');
+      ctx.fillStyle = lightGrad;
+      ctx.fillRect(lx - 60, ly, 120, 80);
     }
 
-    // 窗户（远景装饰）
+    // 黑板（远景墙上，更大更精细）
+    ctx.fillStyle = '#1a3a2a';
+    ctx.fillRect(480, 70, 640, 160);
+    // 黑板边框
+    ctx.fillStyle = '#8B7355';
+    ctx.fillRect(474, 64, 652, 8);
+    ctx.fillRect(474, 228, 652, 8);
+    ctx.fillRect(474, 64, 8, 172);
+    ctx.fillRect(1118, 64, 8, 172);
+    // 粉笔字痕迹
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.font = 'bold 22px sans-serif';
+    ctx.fillText('同学们好', 520, 110);
+    ctx.font = '18px sans-serif';
+    ctx.fillText('今天考试', 520, 145);
+    ctx.fillText('不许作弊！', 520, 175);
+    ctx.fillStyle = 'rgba(255,200,200,0.1)';
+    ctx.font = 'italic 16px sans-serif';
+    ctx.fillText('——班主任寄语', 520, 205);
+
+    // 海报装饰（墙上）
+    for (let i = 0; i < 3; i++) {
+      const px = 80 + i * 520;
+      const py = 320;
+      ctx.fillStyle = `rgba(${i === 0 ? '255,107,107' : i === 1 ? '78,205,196' : '255,214,102'},0.08)`;
+      ctx.fillRect(px, py, 100, 130);
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(px, py, 100, 130);
+      // 海报内容线
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+      ctx.lineWidth = 1;
+      for (let j = 0; j < 4; j++) {
+        ctx.beginPath();
+        ctx.moveTo(px + 10, py + 25 + j * 22);
+        ctx.lineTo(px + 90, py + 25 + j * 22);
+        ctx.stroke();
+      }
+    }
+
+    // 窗户（远景，更精致）
     for (let i = 0; i < 4; i++) {
-      const wx = 150 + i * 380;
-      const wy = 120;
-      const ww = 180;
-      const wh = 200;
-      ctx.fillStyle = 'rgba(135,206,235,0.3)';
+      const wx = 120 + i * 380;
+      const wy = 100;
+      const ww = 160;
+      const wh = 180;
+      // 窗框
+      ctx.fillStyle = 'rgba(200,180,140,0.15)';
+      ctx.fillRect(wx - 4, wy - 4, ww + 8, wh + 8);
+      // 玻璃
+      const winGrad = ctx.createLinearGradient(wx, wy, wx, wy + wh);
+      winGrad.addColorStop(0, 'rgba(135,206,235,0.25)');
+      winGrad.addColorStop(1, 'rgba(100,180,220,0.15)');
+      ctx.fillStyle = winGrad;
       ctx.fillRect(wx, wy, ww, wh);
-      ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-      ctx.lineWidth = 3;
-      ctx.strokeRect(wx, wy, ww, wh);
       // 窗户十字
+      ctx.strokeStyle = 'rgba(200,180,140,0.25)';
+      ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.moveTo(wx + ww / 2, wy);
       ctx.lineTo(wx + ww / 2, wy + wh);
       ctx.moveTo(wx, wy + wh / 2);
       ctx.lineTo(wx + ww, wy + wh / 2);
       ctx.stroke();
-    }
-
-    // 天花板灯（装饰）
-    for (let i = 0; i < 5; i++) {
-      const lx = 160 + i * 320;
-      const ly = 35;
-      ctx.fillStyle = 'rgba(255,255,200,0.15)';
+      // 窗外远景（小树）
+      ctx.fillStyle = 'rgba(100,180,100,0.1)';
       ctx.beginPath();
-      ctx.arc(lx, ly, 25, 0, Math.PI * 2);
+      ctx.arc(wx + 40, wy + wh - 20, 15, 0, Math.PI * 2);
+      ctx.arc(wx + 100, wy + wh - 15, 12, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,200,0.3)';
-      ctx.fillRect(lx - 15, ly - 5, 30, 10);
     }
 
-    // 背景装饰：黑板（远景墙上）
-    const gy = CONFIG.GROUND_Y;
-    ctx.fillStyle = '#1a3a2a';
-    ctx.fillRect(520, 80, 560, 140);
-    ctx.strokeStyle = '#8B7355';
-    ctx.lineWidth = 6;
-    ctx.strokeRect(520, 80, 560, 140);
-    // 黑板上的粉笔字痕迹
-    ctx.fillStyle = 'rgba(255,255,255,0.15)';
-    ctx.font = '20px sans-serif';
-    ctx.fillText('同学们好', 560, 120);
-    ctx.fillText('今天考试', 560, 150);
-    ctx.fillText('不许作弊！', 560, 180);
-
-    // 背景装饰：课桌组（纯背景，无碰撞）
-    ctx.fillStyle = 'rgba(139,115,85,0.5)';
-    ctx.strokeStyle = 'rgba(101,67,33,0.5)';
+    // 背景课桌组（半透明，无碰撞）
+    const deskAlpha = 0.35;
+    ctx.globalAlpha = deskAlpha;
+    ctx.fillStyle = '#8B7355';
+    ctx.strokeStyle = '#5D4037';
     ctx.lineWidth = 2;
     // 玩家侧课桌
-    for (let i = 0; i < 3; i++) {
-      const dx = 380 + i * 90;
-      const dy = gy - 50;
-      ctx.fillRect(dx, dy, 70, 8); // 桌面
-      ctx.strokeRect(dx, dy, 70, 8);
-      ctx.fillRect(dx + 4, dy + 8, 6, 42); // 桌腿
-      ctx.fillRect(dx + 60, dy + 8, 6, 42);
+    for (let i = 0; i < 4; i++) {
+      const dx = 200 + i * 80;
+      const dy = gy - 55;
+      ctx.fillRect(dx, dy, 64, 6);
+      ctx.strokeRect(dx, dy, 64, 6);
+      ctx.fillRect(dx + 3, dy + 6, 5, 38);
+      ctx.fillRect(dx + 56, dy + 6, 5, 38);
     }
     // Boss 侧课桌
-    for (let i = 0; i < 3; i++) {
-      const dx = 850 + i * 90;
-      const dy = gy - 50;
-      ctx.fillRect(dx, dy, 70, 8);
-      ctx.strokeRect(dx, dy, 70, 8);
-      ctx.fillRect(dx + 4, dy + 8, 6, 42);
-      ctx.fillRect(dx + 60, dy + 8, 6, 42);
+    for (let i = 0; i < 4; i++) {
+      const dx = 880 + i * 80;
+      const dy = gy - 55;
+      ctx.fillRect(dx, dy, 64, 6);
+      ctx.strokeRect(dx, dy, 64, 6);
+      ctx.fillRect(dx + 3, dy + 6, 5, 38);
+      ctx.fillRect(dx + 56, dy + 6, 5, 38);
     }
     // 讲台（背景）
-    ctx.fillStyle = 'rgba(120,90,60,0.5)';
-    ctx.fillRect(1150, gy - 80, 120, 8);
-    ctx.strokeRect(1150, gy - 80, 120, 8);
-    ctx.fillRect(1154, gy - 72, 8, 72);
-    ctx.fillRect(1258, gy - 72, 8, 72);
+    ctx.fillStyle = '#6D4C41';
+    ctx.fillRect(1180, gy - 90, 140, 8);
+    ctx.strokeRect(1180, gy - 90, 140, 8);
+    ctx.fillRect(1184, gy - 82, 8, 82);
+    ctx.fillRect(1308, gy - 82, 8, 82);
+    ctx.globalAlpha = 1;
 
-    // 地面（可破坏分段渲染）
+    // 地面渲染（可破坏分段，更精细）
     for (const seg of this.groundSegments) {
       if (seg.destroyed) continue;
       const damageRatio = 1 - seg.hp / seg.maxHp;
+
+      // 地面顶部草皮/瓷砖线
+      ctx.fillStyle = damageRatio > 0.5 ? '#3E2723' : '#5D4037';
+      ctx.fillRect(seg.x, gy, seg.w, 4);
+
       // 基础地面色
-      ctx.fillStyle = damageRatio > 0.5 ? CONFIG.COLORS.groundDark : CONFIG.COLORS.ground;
-      ctx.fillRect(seg.x, CONFIG.GROUND_Y, seg.w, CONFIG.HEIGHT - CONFIG.GROUND_Y);
-      // 裂纹效果（受损越严重裂纹越多）
-      if (damageRatio > 0.2) {
-        ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+      const groundGrad = ctx.createLinearGradient(0, gy, 0, CONFIG.HEIGHT);
+      groundGrad.addColorStop(0, damageRatio > 0.5 ? '#4E342E' : '#6D4C41');
+      groundGrad.addColorStop(1, damageRatio > 0.5 ? '#3E2723' : '#4E342E');
+      ctx.fillStyle = groundGrad;
+      ctx.fillRect(seg.x, gy + 4, seg.w, CONFIG.HEIGHT - gy - 4);
+
+      // 受损裂纹
+      if (damageRatio > 0.15) {
+        ctx.strokeStyle = `rgba(0,0,0,${0.2 + damageRatio * 0.3})`;
         ctx.lineWidth = 1 + damageRatio * 2;
         ctx.beginPath();
-        ctx.moveTo(seg.x + seg.w * 0.2, CONFIG.GROUND_Y);
-        ctx.lineTo(seg.x + seg.w * 0.5, CONFIG.GROUND_Y + 20 + damageRatio * 30);
-        ctx.lineTo(seg.x + seg.w * 0.8, CONFIG.GROUND_Y + 10);
+        ctx.moveTo(seg.x + seg.w * 0.15, gy);
+        ctx.lineTo(seg.x + seg.w * 0.45, gy + 15 + damageRatio * 25);
+        ctx.lineTo(seg.x + seg.w * 0.75, gy + 8);
         ctx.stroke();
       }
-      if (damageRatio > 0.6) {
-        ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+      if (damageRatio > 0.5) {
+        ctx.strokeStyle = `rgba(0,0,0,${0.3 + damageRatio * 0.3})`;
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(seg.x + seg.w * 0.1, CONFIG.GROUND_Y + 5);
-        ctx.lineTo(seg.x + seg.w * 0.3, CONFIG.GROUND_Y + 40);
-        ctx.lineTo(seg.x + seg.w * 0.7, CONFIG.GROUND_Y + 25);
-        ctx.lineTo(seg.x + seg.w * 0.9, CONFIG.GROUND_Y + 50);
+        ctx.moveTo(seg.x + seg.w * 0.1, gy + 3);
+        ctx.lineTo(seg.x + seg.w * 0.3, gy + 35);
+        ctx.lineTo(seg.x + seg.w * 0.6, gy + 20);
+        ctx.lineTo(seg.x + seg.w * 0.85, gy + 45);
         ctx.stroke();
+      }
+      if (damageRatio > 0.8) {
+        // 严重损坏：碎石
+        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+        for (let s = 0; s < 3; s++) {
+          ctx.beginPath();
+          ctx.arc(seg.x + seg.w * (0.2 + s * 0.3), gy + 10 + s * 8, 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
     }
 
-    // 地面瓷砖纹理（仅未被破坏的区域）
-    ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+    // 地面瓷砖纹理线
+    ctx.strokeStyle = 'rgba(0,0,0,0.06)';
     ctx.lineWidth = 1;
     for (const seg of this.groundSegments) {
       if (seg.destroyed) continue;
       ctx.beginPath();
-      ctx.moveTo(seg.x, CONFIG.GROUND_Y);
+      ctx.moveTo(seg.x, gy);
       ctx.lineTo(seg.x, CONFIG.HEIGHT);
       ctx.stroke();
-      for (let yy = CONFIG.GROUND_Y; yy < CONFIG.HEIGHT; yy += 30) {
+      for (let yy = gy + 30; yy < CONFIG.HEIGHT; yy += 35) {
         ctx.beginPath();
         ctx.moveTo(seg.x, yy);
         ctx.lineTo(seg.x + seg.w, yy);
@@ -2677,77 +2751,104 @@ export class BattleScene {
 
     // 身体（Q版圆头，渐变着色）
     const grad = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.2, x, y, r);
-    grad.addColorStop(0, '#6FE5DC');
-    grad.addColorStop(0.6, '#4ECDC4');
-    grad.addColorStop(1, '#3AA89F');
+    grad.addColorStop(0, '#7FF0E8');
+    grad.addColorStop(0.5, '#4ECDC4');
+    grad.addColorStop(1, '#2E9A92');
     ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fill();
+    // 高光
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.beginPath();
+    ctx.ellipse(x - r * 0.35, y - r * 0.4, r * 0.3, r * 0.2, -0.3, 0, Math.PI * 2);
+    ctx.fill();
     ctx.strokeStyle = '#2C8B85';
     ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.stroke();
 
-    // 书包（背后小书包）
+    // 书包（背后小书包，带肩带）
+    ctx.strokeStyle = '#3E2723';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x - p.facing * r * 0.3, y - r * 0.3);
+    ctx.lineTo(x - p.facing * (r * 0.7), y + r * 0.1);
+    ctx.moveTo(x - p.facing * r * 0.3, y + r * 0.1);
+    ctx.lineTo(x - p.facing * (r * 0.7), y + r * 0.3);
+    ctx.stroke();
     ctx.fillStyle = '#5D4037';
     ctx.beginPath();
-    ctx.arc(x - p.facing * (r * 0.7), y + 2, r * 0.5, 0, Math.PI * 2);
+    ctx.roundRect(x - p.facing * (r * 0.95) - r * 0.25, y - r * 0.1, r * 0.5, r * 0.6, 4);
     ctx.fill();
     ctx.strokeStyle = '#3E2723';
     ctx.lineWidth = 1.5;
     ctx.stroke();
+    // 书包扣
+    ctx.fillStyle = '#FFD666';
+    ctx.beginPath();
+    ctx.arc(x - p.facing * (r * 0.95), y + r * 0.15, 3, 0, Math.PI * 2);
+    ctx.fill();
 
-    // 眼睛（根据朝向偏移）
-    const eyeOff = p.facing * 2;
+    // 眼睛（更大更可爱，根据朝向偏移）
+    const eyeOff = p.facing * 3;
     ctx.fillStyle = '#FFF';
     ctx.beginPath();
-    ctx.arc(x + 8 + eyeOff, y - 5, 5, 0, Math.PI * 2);
-    ctx.arc(x + 18 + eyeOff, y - 5, 5, 0, Math.PI * 2);
+    ctx.arc(x - 7 + eyeOff, y - 5, 6, 0, Math.PI * 2);
+    ctx.arc(x + 10 + eyeOff, y - 5, 6, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#333';
     ctx.beginPath();
-    ctx.arc(x + 9 + eyeOff, y - 4, 3, 0, Math.PI * 2);
-    ctx.arc(x + 19 + eyeOff, y - 4, 3, 0, Math.PI * 2);
+    ctx.arc(x - 6 + eyeOff, y - 4, 3.5, 0, Math.PI * 2);
+    ctx.arc(x + 11 + eyeOff, y - 4, 3.5, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#FFF';
     ctx.beginPath();
-    ctx.arc(x + 10 + eyeOff, y - 5, 1.2, 0, Math.PI * 2);
-    ctx.arc(x + 20 + eyeOff, y - 5, 1.2, 0, Math.PI * 2);
+    ctx.arc(x - 5 + eyeOff, y - 5, 1.5, 0, Math.PI * 2);
+    ctx.arc(x + 12 + eyeOff, y - 5, 1.5, 0, Math.PI * 2);
     ctx.fill();
 
     // 腮红
-    ctx.fillStyle = 'rgba(255,150,150,0.35)';
+    ctx.fillStyle = 'rgba(255,130,130,0.3)';
     ctx.beginPath();
-    ctx.arc(x + 4, y + 6, 4, 0, Math.PI * 2);
-    ctx.arc(x + 24, y + 6, 4, 0, Math.PI * 2);
+    ctx.ellipse(x - 10, y + 5, 5, 3, 0, 0, Math.PI * 2);
+    ctx.ellipse(x + 14, y + 5, 5, 3, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // 嘴巴
+    // 嘴巴（微笑）
     ctx.strokeStyle = '#333';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(x + 13 + eyeOff * 0.5, y + 5, 5, 0.2, Math.PI - 0.2);
+    ctx.arc(x + 2 + eyeOff * 0.5, y + 4, 4, 0.15, Math.PI - 0.15);
     ctx.stroke();
 
-    // 帽子（棒球帽风格）
-    ctx.fillStyle = '#FF6B6B';
+    // 帽子（棒球帽，更精细）
+    ctx.fillStyle = '#FF5252';
     ctx.beginPath();
-    ctx.arc(x, y - r * 0.75, r * 0.65, Math.PI, Math.PI * 2);
+    ctx.arc(x, y - r * 0.75, r * 0.68, Math.PI, Math.PI * 2);
+    ctx.fill();
+    // 帽子高光
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.beginPath();
+    ctx.ellipse(x - r * 0.2, y - r * 0.85, r * 0.2, r * 0.08, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = '#C0392B';
     ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y - r * 0.75, r * 0.68, Math.PI, Math.PI * 2);
     ctx.stroke();
     // 帽檐
     ctx.fillStyle = '#E55656';
     ctx.beginPath();
-    ctx.ellipse(x + p.facing * r * 0.5, y - r * 0.55, r * 0.5, r * 0.15, 0, 0, Math.PI * 2);
+    ctx.ellipse(x + p.facing * r * 0.55, y - r * 0.55, r * 0.55, r * 0.15, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = '#C0392B';
     ctx.lineWidth = 1.5;
     ctx.stroke();
-    // 帽顶小星星
+    // 帽顶徽章（五角星）
     ctx.fillStyle = '#FFE66D';
-    ctx.font = 'bold 12px sans-serif';
+    ctx.font = 'bold 13px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('★', x, y - r * 0.95);
     ctx.textAlign = 'left';
