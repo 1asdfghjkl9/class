@@ -4,6 +4,7 @@
 
 import { CONFIG } from './config.js';
 import { loadSave, saveData, addCoins, addExp } from './save.js';
+import { Account } from './account.js';
 import { BattleScene } from './battle/battle.js';
 import { MenuScene, ResultScene } from './ui/menu.js';
 import { SUBJECTS, getStage } from './data/subjects.js';
@@ -23,6 +24,8 @@ export class Game {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     if (!this.ctx) throw new Error('当前浏览器不支持 Canvas 2D');
+    // 账号系统初始化
+    Account.init();
     this.saveData = loadSave();
     this.state = STATE.MENU;
     this.menu = new MenuScene(this.saveData);
