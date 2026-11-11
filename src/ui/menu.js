@@ -74,6 +74,8 @@ export class MenuScene {
     this.onStartBattle = null;   // (target, opts) => void
     this.onResetSave = null;     // () => newSave
     this.hover = { x: -1, y: -1 };
+    // 账号弹窗状态
+    this.accountModal = null; // null | { tab: 'login'|'register', user: '', pwd: '', code: '', error: '' }
   }
 
   update(dt) {
@@ -117,6 +119,10 @@ export class MenuScene {
       case 'page': this.page = arg; this.hits = []; break;
       case 'home': this.page = 'home'; break;
       case 'account': this._showAccountDialog(); break;
+      case 'closeAccountModal': this._closeAccountModal(); break;
+      case 'accountTab': this.accountModal && (this.accountModal.tab = arg, this.accountModal.error = ''); break;
+      case 'submitAccount': this._submitAccount(); break;
+      case 'accountInput': this._handleAccountInput(arg); break;
       case 'subjectTab': this.subjectTab = arg; break;
       case 'shopTab': this.shopTab = arg; break;
       case 'fightBoss': this._startBoss(arg); break;
@@ -199,29 +205,55 @@ export class MenuScene {
   }
 
   _showAccountDialog() {
-    const name = prompt('输入用户名（新用户自动注册）：', (window.__account && window.__account.name) || '');
-    if (!name || !name.trim()) return;
-    const pwd = prompt('输入密码：', '');
-    if (pwd === null) return;
-    const invite = prompt('邀请码（没有可留空，输入7618解锁官方账号）：', '');
-    
-    // 先尝试登录
-    const loginResult = Account.login(name.trim(), pwd);
-    if (loginResult.ok) {
-      this.save = Save.load();
-      const offMsg = loginResult.isOfficial ? ' [官方]' : '';
-      this._toast('登录成功：' + name.trim() + offMsg);
-      return;
-    }
-    
-    // 登录失败，尝试注册
-    const regResult = Account.register(name.trim(), pwd, invite || '');
-    if (regResult.ok) {
-      this.save = Save.load();
-      const offMsg = regResult.isOfficial ? ' [官方账号·无限金币]' : '';
-      this._toast('注册成功：' + name.trim() + offMsg);
+    this.accountModal = {
+      tab: 'login',
+      user: (window.__account && window.__account.name) || '',
+      pwd: '',
+      code: '',
+      error: '',
+    };
+  }
+
+  _closeAccountModal() {
+    this.accountModal = null;
+  }
+
+  _submitAccount() {
+    const m = this.accountModal;
+    if (!m) return;
+    if (!m.user || m.user.length < 2) { m.error = '用户名至少2个字符'; return; }
+    if (!m.pwd || m.pwd.length < 3) { m.error = '密码至少3个字符'; return; }
+
+    if (m.tab === 'login') {
+      const r = Account.login(m.user.trim(), m.pwd);
+      if (r.ok) {
+        this.save = Save.load();
+        this.accountModal = null;
+        this._toast('登录成功：' + m.user.trim() + (r.isOfficial ? ' [官方]' : ''));
+      } else {
+        m.error = '用户名不存在或密码错误';
+      }
     } else {
-      this._toast('登录失败：密码错误');
+      const r = Account.register(m.user.trim(), m.pwd, m.code || '');
+      if (r.ok) {
+        this.save = Save.load();
+        this.accountModal = null;
+        this._toast('注册成功：' + m.user.trim() + (r.isOfficial ? ' [官方·无限金币]' : ''));
+      } else {
+        m.error = '用户名已存在';
+      }
+    }
+  }
+
+  _handleAccountInput(field) {
+    const m = this.accountModal;
+    if (!m) return;
+    const labels = { user: '输入用户名', pwd: '输入密码', code: '输入邀请码（选填）' };
+    const current = m[field] || '';
+    const val = prompt(labels[field] || '输入', current);
+    if (val !== null) {
+      m[field] = val;
+      m.error = '';
     }
   }
 
@@ -305,6 +337,155 @@ export class MenuScene {
     if (typeof fn === 'function') fn.call(this, ctx);
 
     this._toastDraw(ctx);
+
+    // 账号弹窗（渲染在最上层）
+    if (this.accountModal) this._renderAccountModal(ctx);
+  }
+
+  _renderAccountModal(ctx) {
+    const m = this.accountModal;
+    if (!m) return;
+
+    // 遮罩层
+    ctx.fillStyle = 'rgba(0,0,0,0.75)';
+    ctx.fillRect(0, 0, W, H);
+
+    // 弹窗卡片
+    const cw = 520, ch = 520;
+    const cx = (W - cw) / 2;
+    const cy = (H - ch) / 2;
+
+    // 弹窗背景（深色磨砂+金色描边）
+    ctx.fillStyle = 'rgba(20,20,28,0.95)';
+    this._roundRect(ctx, cx, cy, cw, ch, 16);
+    ctx.fill();
+    ctx.strokeStyle = '#C9A84C';
+    ctx.lineWidth = 2;
+    this._roundRect(ctx, cx, cy, cw, ch, 16);
+    ctx.stroke();
+
+    // 关闭按钮
+    const closeX = cx + cw - 40, closeY = cy + 16;
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.font = `bold 24px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillText('×', closeX + 12, closeY + 20);
+    ctx.textAlign = 'left';
+    this.hits.push({ x: closeX, y: closeY, w: 36, h: 36, action: 'closeAccountModal' });
+
+    // 标题
+    ctx.fillStyle = '#C9A84C';
+    ctx.font = `bold 28px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillText('账号中心', cx + cw / 2, cy + 56);
+    ctx.textAlign = 'left';
+
+    // 选项卡：登录 / 注册
+    const tabW = (cw - 80) / 2;
+    const tabY = cy + 84;
+    // 登录tab
+    const isLogin = m.tab === 'login';
+    ctx.fillStyle = isLogin ? '#C9A84C' : 'rgba(255,255,255,0.05)';
+    this._roundRect(ctx, cx + 40, tabY, tabW, 44, 8);
+    ctx.fill();
+    ctx.fillStyle = isLogin ? '#1a1a2e' : 'rgba(201,168,76,0.6)';
+    ctx.font = `bold 17px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillText('登录', cx + 40 + tabW / 2, tabY + 28);
+    this.hits.push({ x: cx + 40, y: tabY, w: tabW, h: 44, action: 'accountTab:login' });
+    // 注册tab
+    const isReg = m.tab === 'register';
+    ctx.fillStyle = isReg ? '#C9A84C' : 'rgba(255,255,255,0.05)';
+    this._roundRect(ctx, cx + 40 + tabW + 8, tabY, tabW, 44, 8);
+    ctx.fill();
+    ctx.fillStyle = isReg ? '#1a1a2e' : 'rgba(201,168,76,0.6)';
+    ctx.fillText('注册', cx + 40 + tabW + 8 + tabW / 2, tabY + 28);
+    ctx.textAlign = 'left';
+    this.hits.push({ x: cx + 40 + tabW + 8, y: tabY, w: tabW, h: 44, action: 'accountTab:register' });
+
+    // 输入框区域
+    const inputX = cx + 40;
+    const inputW = cw - 80;
+    const inputH = 48;
+    let iy = tabY + 68;
+
+    // 用户名
+    this._drawInputField(ctx, inputX, iy, inputW, inputH, '用户名', m.user, 'accountInput:user');
+    iy += inputH + 16;
+
+    // 邀请码（仅注册时显示）
+    if (m.tab === 'register') {
+      this._drawInputField(ctx, inputX, iy, inputW, inputH, '邀请码（选填，输入7618解锁官方）', m.code, 'accountInput:code');
+      iy += inputH + 16;
+    }
+
+    // 密码
+    this._drawInputField(ctx, inputX, iy, inputW, inputH, '密码', '•'.repeat(m.pwd.length), 'accountInput:pwd');
+    iy += inputH + 16;
+
+    // 错误提示
+    if (m.error) {
+      ctx.fillStyle = '#E53935';
+      ctx.font = `14px ${FONT}`;
+      ctx.textAlign = 'center';
+      ctx.fillText(m.error, cx + cw / 2, iy + 14);
+      ctx.textAlign = 'left';
+    }
+    iy += 32;
+
+    // 提交按钮
+    const btnW = cw - 80;
+    const btnH = 50;
+    ctx.fillStyle = '#C9A84C';
+    this._roundRect(ctx, inputX, iy, btnW, btnH, 8);
+    ctx.fill();
+    ctx.fillStyle = '#1a1a2e';
+    ctx.font = `bold 20px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillText(m.tab === 'login' ? '登 录' : '注 册', inputX + btnW / 2, iy + 32);
+    ctx.textAlign = 'left';
+    this.hits.push({ x: inputX, y: iy, w: btnW, h: btnH, action: 'submitAccount' });
+
+    // 底部说明
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.font = `13px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillText('用户名注册 · 密码登录', cx + cw / 2, cy + ch - 24);
+    ctx.textAlign = 'left';
+  }
+
+  _drawInputField(ctx, x, y, w, h, placeholder, value, action) {
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    this._roundRect(ctx, x, y, w, h, 8);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(201,168,76,0.3)';
+    ctx.lineWidth = 1.5;
+    this._roundRect(ctx, x, y, w, h, 8);
+    ctx.stroke();
+
+    if (value) {
+      ctx.fillStyle = '#F0E6D2';
+      ctx.font = `17px ${FONT}`;
+      ctx.textAlign = 'left';
+      ctx.fillText(value, x + 16, y + h / 2 + 6);
+    } else {
+      ctx.fillStyle = 'rgba(255,255,255,0.25)';
+      ctx.font = `15px ${FONT}`;
+      ctx.textAlign = 'left';
+      ctx.fillText(placeholder, x + 16, y + h / 2 + 6);
+    }
+    ctx.textAlign = 'left';
+    this.hits.push({ x, y, w, h, action });
+  }
+
+  _roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
   }
 
   _bg(ctx) {
