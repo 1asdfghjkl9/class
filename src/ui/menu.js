@@ -22,7 +22,7 @@ import {
   buyExp, buyFragment, rerollWeapon, unlockTalent, respecTalents,
   equipSkill, equipWeapon,
 } from '../meta/economy.js';
-import { saveData, resetSave, createDefaultSave, expForLevel } from '../save.js';
+import { saveData, resetSave, createDefaultSave, expForLevel, loadSave } from '../save.js';
 import { Account } from '../account.js';
 
 const FONT = '"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif';
@@ -100,6 +100,19 @@ export class MenuScene {
 
   click(x, y) {
     if (this.page === 'story') { this._advanceStory(); return true; }
+    // 账号弹窗打开时，只处理弹窗内的按钮
+    if (this.accountModal) {
+      for (let i = this.hits.length - 1; i >= 0; i--) {
+        const b = this.hits[i];
+        if (b.modal && x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
+          this._act(b.action, b.data);
+          return true;
+        }
+      }
+      // 点击弹窗外区域关闭弹窗
+      this._closeAccountModal();
+      return true;
+    }
     for (let i = this.hits.length - 1; i >= 0; i--) {
       const b = this.hits[i];
       if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
@@ -211,6 +224,7 @@ export class MenuScene {
       pwd: '',
       code: '',
       error: '',
+      focusField: 'user',
     };
   }
 
@@ -227,7 +241,7 @@ export class MenuScene {
     if (m.tab === 'login') {
       const r = Account.login(m.user.trim(), m.pwd);
       if (r.ok) {
-        this.save = Save.load();
+        this.save = loadSave();
         this.accountModal = null;
         this._toast('登录成功：' + m.user.trim() + (r.isOfficial ? ' [官方]' : ''));
       } else {
@@ -236,7 +250,7 @@ export class MenuScene {
     } else {
       const r = Account.register(m.user.trim(), m.pwd, m.code || '');
       if (r.ok) {
-        this.save = Save.load();
+        this.save = loadSave();
         this.accountModal = null;
         this._toast('注册成功：' + m.user.trim() + (r.isOfficial ? ' [官方·无限金币]' : ''));
       } else {
@@ -248,13 +262,26 @@ export class MenuScene {
   _handleAccountInput(field) {
     const m = this.accountModal;
     if (!m) return;
-    const labels = { user: '输入用户名', pwd: '输入密码', code: '输入邀请码（选填）' };
-    const current = m[field] || '';
-    const val = prompt(labels[field] || '输入', current);
-    if (val !== null) {
-      m[field] = val;
-      m.error = '';
+    m.focusField = field;
+    m.error = '';
+  }
+
+  // 处理键盘输入到账号弹窗的聚焦字段
+  handleAccountKey(key, isBackspace) {
+    const m = this.accountModal;
+    if (!m || !m.focusField) return false;
+    const f = m.focusField;
+    if (isBackspace) {
+      m[f] = (m[f] || '').slice(0, -1);
+      return true;
     }
+    if (key && key.length === 1) {
+      // 限制长度
+      if ((m[f] || '').length >= 20) return true;
+      m[f] = (m[f] || '') + key;
+      return true;
+    }
+    return false;
   }
 
   // ---------- 战斗入口 ----------
@@ -371,7 +398,7 @@ export class MenuScene {
     ctx.textAlign = 'center';
     ctx.fillText('×', closeX + 12, closeY + 20);
     ctx.textAlign = 'left';
-    this.hits.push({ x: closeX, y: closeY, w: 36, h: 36, action: 'closeAccountModal' });
+    this.hits.push({ x: closeX, y: closeY, w: 36, h: 36, action: 'closeAccountModal', modal: true });
 
     // 标题
     ctx.fillStyle = '#C9A84C';
@@ -392,7 +419,7 @@ export class MenuScene {
     ctx.font = `bold 17px ${FONT}`;
     ctx.textAlign = 'center';
     ctx.fillText('登录', cx + 40 + tabW / 2, tabY + 28);
-    this.hits.push({ x: cx + 40, y: tabY, w: tabW, h: 44, action: 'accountTab:login' });
+    this.hits.push({ x: cx + 40, y: tabY, w: tabW, h: 44, action: 'accountTab:login', modal: true });
     // 注册tab
     const isReg = m.tab === 'register';
     ctx.fillStyle = isReg ? '#C9A84C' : 'rgba(255,255,255,0.05)';
@@ -401,7 +428,7 @@ export class MenuScene {
     ctx.fillStyle = isReg ? '#1a1a2e' : 'rgba(201,168,76,0.6)';
     ctx.fillText('注册', cx + 40 + tabW + 8 + tabW / 2, tabY + 28);
     ctx.textAlign = 'left';
-    this.hits.push({ x: cx + 40 + tabW + 8, y: tabY, w: tabW, h: 44, action: 'accountTab:register' });
+    this.hits.push({ x: cx + 40 + tabW + 8, y: tabY, w: tabW, h: 44, action: 'accountTab:register', modal: true });
 
     // 输入框区域
     const inputX = cx + 40;
@@ -444,7 +471,7 @@ export class MenuScene {
     ctx.textAlign = 'center';
     ctx.fillText(m.tab === 'login' ? '登 录' : '注 册', inputX + btnW / 2, iy + 32);
     ctx.textAlign = 'left';
-    this.hits.push({ x: inputX, y: iy, w: btnW, h: btnH, action: 'submitAccount' });
+    this.hits.push({ x: inputX, y: iy, w: btnW, h: btnH, action: 'submitAccount', modal: true });
 
     // 底部说明
     ctx.fillStyle = 'rgba(255,255,255,0.3)';
@@ -455,11 +482,14 @@ export class MenuScene {
   }
 
   _drawInputField(ctx, x, y, w, h, placeholder, value, action) {
-    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    const m = this.accountModal;
+    const isFocused = m && m.focusField === action.split(':')[1];
+    
+    ctx.fillStyle = isFocused ? 'rgba(201,168,76,0.12)' : 'rgba(255,255,255,0.06)';
     this._roundRect(ctx, x, y, w, h, 8);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(201,168,76,0.3)';
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = isFocused ? '#C9A84C' : 'rgba(201,168,76,0.3)';
+    ctx.lineWidth = isFocused ? 2 : 1.5;
     this._roundRect(ctx, x, y, w, h, 8);
     ctx.stroke();
 
@@ -468,14 +498,27 @@ export class MenuScene {
       ctx.font = `17px ${FONT}`;
       ctx.textAlign = 'left';
       ctx.fillText(value, x + 16, y + h / 2 + 6);
+      // 聚焦光标
+      if (isFocused) {
+        const tw = ctx.measureText(value).width;
+        ctx.fillStyle = '#C9A84C';
+        if (Math.floor(Date.now() / 500) % 2 === 0) {
+          ctx.fillRect(x + 16 + tw + 2, y + 10, 2, h - 20);
+        }
+      }
     } else {
-      ctx.fillStyle = 'rgba(255,255,255,0.25)';
+      ctx.fillStyle = isFocused ? 'rgba(201,168,76,0.5)' : 'rgba(255,255,255,0.25)';
       ctx.font = `15px ${FONT}`;
       ctx.textAlign = 'left';
       ctx.fillText(placeholder, x + 16, y + h / 2 + 6);
+      // 空值聚焦光标
+      if (isFocused && Math.floor(Date.now() / 500) % 2 === 0) {
+        ctx.fillStyle = '#C9A84C';
+        ctx.fillRect(x + 16, y + 10, 2, h - 20);
+      }
     }
     ctx.textAlign = 'left';
-    this.hits.push({ x, y, w, h, action });
+    this.hits.push({ x, y, w, h, action, modal: true });
   }
 
   _roundRect(ctx, x, y, w, h, r) {
