@@ -91,23 +91,86 @@ export function getCurrentSaveKey() {
 
 // ===== 官方账号专用初始存档（无限金币） =====
 function createOfficialSave() {
+  // 所有技能
+  const allSkills = ['wall', 'chalk', 'justice', 'snack', 'lecture', 'swap', 'kickout', 'orange', 'tomato', 'detain', 'judge', 'desk', 'paint', 'sketch', 'sprint', 'ball'];
+  const skillsUnlocked = {};
+  const skillLevels = {};
+  allSkills.forEach(id => { skillsUnlocked[id] = 1; skillLevels[id] = 3; });
+
+  // 所有武器（实例形式）
+  const weaponIds = ['pen_gun', 'insecticide', 'han_chalk', 'exam_paper', 'homework', 'chinese_class'];
+  const weaponsOwned = {};
+  weaponIds.forEach(id => { weaponsOwned[id] = { level: 5, affixes: [] }; });
+
+  // 所有道具
+  const allItems = ['kite', 'leave', 'no_leave', 'none_leave', 'not_our_class', 'unknown_report', 'not_me', 'what_doing', 'teacher_snack', 'teacher_class'];
+  const itemLevels = {};
+  allItems.forEach(id => { itemLevels[id] = 3; });
+
   return {
     version: 2,
     coins: 999999,
-    gems: 99999,
-    fragments: 999,
-    playerLevel: 10,
-    playerExp: 0,
-    weapons: { owned: ['slingshot', 'ruler', 'book', 'brush'], equipped: 'brush', levels: {} },
-    skills: { owned: ['wall', 'chalk', 'justice', 'snack', 'lecture', 'swap', 'kickout', 'orange', 'tomato', 'detain', 'judge', 'desk', 'paint', 'sketch', 'sprint', 'ball'], equipped: ['wall', 'chalk', 'justice', 'paint', 'ball', 'sprint'], levels: {} },
-    items: { owned: ['kite', 'shield', 'bomb', 'ruler2', 'sauce', 'insecticide', 'cheatSheet', 'energy', 'sneaker', 'luckyCoin'], levels: {} },
-    talents: { points: 30, spent: {} },
-    progress: { bosses: {}, stages: {}, subjects: { chinese: 0, math: 0, english: 0, art: 0, pe: 0 } },
-    achievements: { unlocked: {} },
-    stats: { totalWins: 0, totalLosses: 0, nightmareWins: 0, maxCombo: 0, bestCrit: 0 },
-    settings: { difficulty: 'normal', ultId: 'bomb', sound: true, showAimLine: true },
-    subjectBadges: { chinese: 0, math: 0, english: 0, art: 0, pe: 0 },
-    challenges: { cleared: {} },
+    exp: 0,
+    level: 10,
+
+    progress: {
+      bosses: { jin: 1, han: 1, wu: 1, lv: 1, ma: 1 },
+      stages: {},
+      subjectBadges: { chinese: 0, math: 0, english: 0, art: 0, pe: 0 },
+    },
+
+    skillsUnlocked,
+    skillLevels,
+    skillFragments: {},
+
+    itemLevels,
+
+    weapons: {
+      owned: weaponsOwned,
+      equipped: 'chinese_class',
+    },
+
+    equipped: {
+      skills: ['wall', 'chalk', 'justice', 'paint', 'ball', 'sprint'],
+      items: [],
+    },
+
+    talents: {
+      points: 30,
+      spent: {},
+    },
+
+    achievements: {
+      unlocked: {},
+      title: '',
+    },
+
+    challenges: {
+      cleared: {},
+    },
+
+    stats: {
+      totalShots: 0,
+      totalWins: 0,
+      totalLosses: 0,
+      superCrits: 0,
+      maxSingleHit: 0,
+      maxWeakpointsOneBattle: 0,
+      noDamageWins: 0,
+      dailyClears: 0,
+      nightmareWins: 0,
+      totalCoinsEarned: 0,
+      totalPlayTime: 0,
+    },
+
+    settings: {
+      sound: true,
+      difficulty: 'normal',
+      ultId: 'bomb',
+      showAimLine: true,
+    },
+
+    battleState: null,
     isOfficial: true,
   };
 }
