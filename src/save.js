@@ -1,9 +1,15 @@
 // ============================================================
 // save.js — 存档系统 v2（金币 / 积分 / 等级 / 天赋 / 成就 / 武器实例 / 挑战）
+// 支持账号隔离：每个账号有独立的存档
 // ============================================================
 
-const SAVE_KEY = 'class_battle_save_v2';
+import { getCurrentSaveKey, isLoggedIn } from './account.js';
+
 const OLD_KEY = 'class_battle_save_v1';
+function getSaveKey() {
+  if (isLoggedIn()) return getCurrentSaveKey();
+  return 'class_battle_save_v2';
+}
 
 export function createDefaultSave() {
   return {
@@ -15,7 +21,7 @@ export function createDefaultSave() {
     progress: {
       bosses: { jin: 0, han: 0, wu: 0 },
       stages: {},                 // { stageId: 1 }
-      subjectBadges: { chinese: 0, math: 0, english: 0 },
+      subjectBadges: { chinese: 0, math: 0, english: 0, art: 0, pe: 0 },
     },
 
     // 技能
@@ -117,7 +123,7 @@ function migrateOld(old) {
 
 export function loadSave() {
   try {
-    const raw = localStorage.getItem(SAVE_KEY);
+    const raw = localStorage.getItem(getSaveKey());
     if (raw) {
       const data = JSON.parse(raw);
       const merged = deepMerge(createDefaultSave(), data);
@@ -141,7 +147,7 @@ export function loadSave() {
 
 export function saveData(data) {
   try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    localStorage.setItem(getSaveKey(), JSON.stringify(data));
     return true;
   } catch (e) {
     console.warn('存档保存失败', e);
@@ -151,7 +157,7 @@ export function saveData(data) {
 
 export function resetSave() {
   try {
-    localStorage.removeItem(SAVE_KEY);
+    localStorage.removeItem(getSaveKey());
     localStorage.removeItem(OLD_KEY);
   } catch (e) { /* ignore */ }
   return createDefaultSave();
