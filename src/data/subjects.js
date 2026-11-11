@@ -167,9 +167,101 @@ export const SUBJECTS = {
       }),
     ],
   },
+
+  art: {
+    id: 'art',
+    name: '美术线',
+    color: '#CE93D8',
+    badge: '美术徽章',
+    desc: '素描、水彩、雕塑，画出来的都是武器',
+    stages: [
+      student({
+        id: 'art_1', name: '钱小染', title: '铅笔侠', nickname: '2B',
+        hp: 140, color: '#B39DDB', shotBaseDamage: 10,
+        quote: '先打个稿。',
+        weakpoints: [{ id: 'pencil', name: '2B铅笔', hp: 24, offsetX: -32, offsetY: -18, radius: 14, color: '#E1BEE7', breakEffect: 'none' }],
+        mechanics: [],
+        reward: { coins: 65, exp: 22 },
+      }),
+      student({
+        id: 'art_2', name: '颜料桶', title: '色彩大师', nickname: '调色盘',
+        hp: 160, color: '#AB47BC', shotBaseDamage: 11,
+        quote: '色调不对，重来。',
+        weakpoints: [{ id: 'palette', name: '调色盘', hp: 28, offsetX: -34, offsetY: 10, radius: 15, color: '#E1BEE7', breakEffect: 'none' }],
+        mechanics: ['silence_shot'],
+        reward: { coins: 75, exp: 26 },
+      }),
+      student({
+        id: 'art_3', name: '雕塑手', title: '泥塑师', nickname: '泥巴人',
+        hp: 180, color: '#7B1FA2', shotBaseDamage: 12,
+        quote: '捏出来就活了。',
+        weakpoints: [{ id: 'clay', name: '泥塑工具', hp: 30, offsetX: -28, offsetY: -26, radius: 14, color: '#CE93D8', breakEffect: 'none' }],
+        mechanics: ['double_shot'],
+        reward: { coins: 90, exp: 32 },
+      }),
+      student({
+        id: 'art_rep', name: '画笔仙', title: '美术课代表', nickname: '画魂',
+        hp: 300, color: '#4A148C', shotBaseDamage: 15, radius: 34,
+        quote: '我画什么，什么就是真的。',
+        weakpoints: [
+          { id: 'brush', name: '神笔', hp: 44, offsetX: -36, offsetY: 12, radius: 17, color: '#E1BEE7', breakEffect: 'none' },
+          { id: 'canvas', name: '画板', hp: 36, offsetX: -28, offsetY: -26, radius: 14, color: '#BA68C8', breakEffect: 'none' },
+        ],
+        mechanics: ['shield_self', 'double_shot'],
+        isRep: true,
+        reward: { coins: 220, exp: 90 },
+      }),
+    ],
+  },
+
+  pe: {
+    id: 'pe',
+    name: '体育线',
+    color: '#FFB74D',
+    badge: '体育徽章',
+    desc: '跑步、跳远、铅球，体力怪兽的天下',
+    stages: [
+      student({
+        id: 'pe_1', name: '冲刺哥', title: '百米飞人', nickname: '起跑器',
+        hp: 145, color: '#FFCC80', shotBaseDamage: 11,
+        quote: '预备——跑！',
+        weakpoints: [{ id: 'whistle', name: '口哨', hp: 24, offsetX: -32, offsetY: -18, radius: 14, color: '#FFE0B2', breakEffect: 'none' }],
+        mechanics: [],
+        reward: { coins: 65, exp: 22 },
+      }),
+      student({
+        id: 'pe_2', name: '跳远王', title: '沙坑霸主', nickname: '弹簧腿',
+        hp: 165, color: '#FFA726', shotBaseDamage: 12,
+        quote: '再跳远一点。',
+        weakpoints: [{ id: 'tape', name: '皮尺', hp: 28, offsetX: -34, offsetY: 10, radius: 15, color: '#FFE0B2', breakEffect: 'none' }],
+        mechanics: ['shield_self'],
+        reward: { coins: 75, exp: 26 },
+      }),
+      student({
+        id: 'pe_3', name: '铅球怪', title: '力量担当', nickname: '铁球',
+        hp: 190, color: '#EF6C00', shotBaseDamage: 13,
+        quote: '看我推过去！',
+        weakpoints: [{ id: 'shotput', name: '铅球', hp: 32, offsetX: -30, offsetY: -24, radius: 15, color: '#FFB74D', breakEffect: 'none' }],
+        mechanics: ['double_shot'],
+        reward: { coins: 90, exp: 32 },
+      }),
+      student({
+        id: 'pe_rep', name: '铁教练', title: '体育课代表', nickname: '魔鬼训练',
+        hp: 310, color: '#E65100', shotBaseDamage: 16, radius: 34,
+        quote: '给我跑十圈！',
+        weakpoints: [
+          { id: 'stopwatch', name: '秒表', hp: 44, offsetX: -36, offsetY: 12, radius: 17, color: '#FFE0B2', breakEffect: 'none' },
+          { id: 'coneblock', name: '锥形桶', hp: 36, offsetX: -28, offsetY: -26, radius: 14, color: '#FFA726', breakEffect: 'none' },
+        ],
+        mechanics: ['silence_shot', 'double_shot'],
+        isRep: true,
+        reward: { coins: 240, exp: 100 },
+      }),
+    ],
+  },
 };
 
-export const SUBJECT_ORDER = ['chinese', 'math', 'english'];
+export const SUBJECT_ORDER = ['chinese', 'math', 'english', 'art', 'pe'];
 
 // 展开成可查询的关卡表
 export const ALL_STAGES = (() => {
