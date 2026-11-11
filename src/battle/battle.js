@@ -151,7 +151,7 @@ export class BattleScene {
     this.bossList = this.bossTwin ? [this.boss, this.bossTwin] : [this.boss];
 
     // --- 地形 ---
-    const factory = TERRAIN_FACTORIES[this.bossId] || TERRAIN_FACTORIES.jin;
+    const factory = TERRAIN_FACTORIES[this.bossId] || TERRAIN_FACTORIES.jin || (() => []);
     this.terrain = factory();
 
     // --- 可破坏地面分段 ---
@@ -1075,7 +1075,7 @@ export class BattleScene {
 
   _spawnProjectile(source, angle, speed, damage, color, targetUnit, skillData, extraOpts) {
     const o = extraOpts || {};
-    const r = skillData && skillData.type === 'aoe' ? 11 : 8;
+    const r = o.radius || (skillData && skillData.type === 'aoe' ? 11 : 8);
     const px = source.x + Math.cos(angle) * (source.radius + r);
     const py = source.y - source.radius / 2 + Math.sin(angle) * (source.radius + r);
     const vx = Math.cos(angle) * speed;
@@ -1094,6 +1094,7 @@ export class BattleScene {
     proj.skillData = skillData || null;
     proj.opts = o;
     proj.aoeRadius = o.aoeRadius || 0;
+    proj.isAOE = !!o.isAOE;
     proj.ignoreWind = !!o.ignoreWind;
     proj.noSuperCrit = !!o.noSuperCrit;
     proj.clearsSauce = !!o.clearsSauce;
@@ -1673,6 +1674,28 @@ export class BattleScene {
         if (this.bossActionTimer > 2.0) this._endBossAction();
         break;
 
+      case 'triple_shot':
+        // 三连射
+        if (this.bossActionPhase === 0 && this.bossActionTimer > 0.5) {
+          const ai = this.activeAI || this.ai;
+          const unit = this.activeBoss || this.boss;
+          for (let k = 0; k < 3; k++) {
+            const params = ai.getNormalShotParams();
+            const angle = Math.atan2(params.vy, params.vx);
+            const speed = Math.hypot(params.vx, params.vy);
+            this.pendingShots.push({
+              unit, angle, speed,
+              dmg: Math.round((unit.shotBaseDamage || 10) * (unit.dmgMul || 1) * (unit.buffMul || 1) * 0.8),
+              color: unit.color || '#FF9999',
+              delay: k * 0.22,
+            });
+          }
+          this.audio.play('bossAtk');
+          this.bossActionPhase = 1;
+        }
+        if (this.bossActionTimer > 2.2) this._endBossAction();
+        break;
+
       case 'shield_self': {
         const unit = this.activeBoss || this.boss;
         if (this.bossActionTimer > 1.0) {
@@ -1704,6 +1727,94 @@ export class BattleScene {
         if (this.bossActionTimer > 1.5) {
           this._endBossAction();
         }
+        break;
+
+      case 'paint_splash':
+        // 吕老师：颜料范围攻击
+        if (this.bossActionPhase === 0 && this.bossActionTimer > 0.5) {
+          const ai = this.activeAI || this.ai;
+          const unit = this.activeBoss || this.boss;
+          const params = ai.getNormalShotParams();
+          const angle = Math.atan2(params.vy, params.vx);
+          const speed = Math.hypot(params.vx, params.vy) * 0.8;
+          const dmg = Math.round((unit.shotBaseDamage || 13) * 1.6 * (unit.buffMul || 1));
+          const proj = this._spawnProjectile(unit, angle, speed, dmg, unit.color || '#FF9800');
+          proj.aoeRadius = 140;
+          proj.isAOE = true;
+          proj.effect = 'slow';
+          proj.effectTurns = 2;
+          this.audio.play('bossAtk');
+          this.bossActionPhase = 1;
+        }
+        if (this.bossActionTimer > 2.0) this._endBossAction();
+        break;
+
+      case 'sketch_burst':
+        // 吕老师：速写4连射
+        if (this.bossActionPhase === 0 && this.bossActionTimer > 0.5) {
+          const ai = this.activeAI || this.ai;
+          const unit = this.activeBoss || this.boss;
+          for (let k = 0; k < 4; k++) {
+            const params = ai.getNormalShotParams();
+            const angle = Math.atan2(params.vy, params.vx) + (k - 1.5) * 0.04;
+            const speed = Math.hypot(params.vx, params.vy);
+            this.pendingShots.push({
+              unit, angle, speed,
+              dmg: Math.round((unit.shotBaseDamage || 13) * 0.6 * (unit.buffMul || 1)),
+              color: '#795548',
+              delay: k * 0.15,
+            });
+          }
+          this.audio.play('bossAtk');
+          this.bossActionPhase = 1;
+        }
+        if (this.bossActionTimer > 2.0) this._endBossAction();
+        break;
+
+      case 'ball_throw':
+        // 马老师：实心球重击
+        if (this.bossActionPhase === 0 && this.bossActionTimer > 0.5) {
+          const ai = this.activeAI || this.ai;
+          const unit = this.activeBoss || this.boss;
+          const params = ai.getNormalShotParams();
+          const angle = Math.atan2(params.vy, params.vx);
+          const speed = Math.hypot(params.vx, params.vy) * 0.9;
+          const dmg = Math.round((unit.shotBaseDamage || 16) * 2.2 * (unit.buffMul || 1));
+          const proj = this._spawnProjectile(unit, angle, speed, dmg, unit.color || '#4CAF50');
+          proj.radius = 20;
+          proj.effect = 'knockback';
+          proj.effectValue = 180;
+          this.audio.play('bossAtk');
+          this.bossActionPhase = 1;
+        }
+        if (this.bossActionTimer > 2.0) this._endBossAction();
+        break;
+
+      case 'sprint_charge':
+        // 马老师：冲刺冲撞
+        if (this.bossActionPhase === 0 && this.bossActionTimer > 0.3) {
+          const unit = this.activeBoss || this.boss;
+          const target = this._nearestEnemy();
+          if (target) {
+            const dx = target.x - unit.x;
+            const dist = Math.abs(dx);
+            if (dist > 80) {
+              // 冲刺
+              unit.x += Math.sign(dx) * Math.min(dist - 60, 200);
+              unit.x = Math.max(unit.radius, Math.min(CONFIG.WIDTH - unit.radius, unit.x));
+              this._floatText('冲刺！', '#4CAF50', unit.x, unit.y - unit.radius - 30, 22);
+            } else {
+              // 近身冲撞
+              const dmg = Math.round((unit.shotBaseDamage || 16) * 1.5 * (unit.buffMul || 1));
+              this._dealDamage(target, dmg, { type: 'melee' });
+              this._floatText('冲撞！', '#FF5722', target.x, target.y - target.radius - 30, 22);
+              this.audio.play('hit');
+            }
+          }
+          this.audio.play('bossAtk');
+          this.bossActionPhase = 1;
+        }
+        if (this.bossActionTimer > 1.5) this._endBossAction();
         break;
     }
   }
@@ -2728,6 +2839,10 @@ export class BattleScene {
       this._drawHanFeatures(ctx, x, y, r, b);
     } else if (this.bossId === 'wu') {
       this._drawWuFeatures(ctx, x, y, r, b);
+    } else if (this.bossId === 'lv') {
+      this._drawDingFeatures(ctx, x, y, r, b);
+    } else if (this.bossId === 'ma') {
+      this._drawHuangFeatures(ctx, x, y, r, b);
     } else {
       this._drawStudentFeatures(ctx, x, y, r, b);
     }
@@ -2946,6 +3061,109 @@ export class BattleScene {
     ctx.lineTo(x + r * 0.4, y + r * 0.55);
     ctx.closePath();
     ctx.fill();
+    // 名字
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.font = 'bold 15px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(b.name || '', x, y - r - 14);
+    ctx.textAlign = 'left';
+  }
+
+  _drawDingFeatures(ctx, x, y, r, b) {
+    // 丁老师（美术老师）：贝雷帽 + 调色盘
+    // 贝雷帽
+    ctx.fillStyle = '#E91E63';
+    ctx.beginPath();
+    ctx.ellipse(x, y - r * 0.7, r * 0.7, r * 0.25, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#C2185B';
+    ctx.beginPath();
+    ctx.arc(x + r * 0.3, y - r * 0.85, r * 0.1, 0, Math.PI * 2);
+    ctx.fill();
+    // 眼睛
+    ctx.fillStyle = '#333';
+    ctx.beginPath();
+    ctx.arc(x - r * 0.28, y - r * 0.15, r * 0.12, 0, Math.PI * 2);
+    ctx.arc(x + r * 0.28, y - r * 0.15, r * 0.12, 0, Math.PI * 2);
+    ctx.fill();
+    // 微笑
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y + r * 0.1, r * 0.28, 0.1 * Math.PI, 0.9 * Math.PI);
+    ctx.stroke();
+    // 围裙
+    ctx.fillStyle = '#FFF8E1';
+    ctx.beginPath();
+    ctx.moveTo(x - r * 0.5, y + r * 0.4);
+    ctx.lineTo(x + r * 0.5, y + r * 0.4);
+    ctx.lineTo(x + r * 0.45, y + r * 0.95);
+    ctx.lineTo(x - r * 0.45, y + r * 0.95);
+    ctx.closePath();
+    ctx.fill();
+    // 颜料点
+    const colors = ['#F44336', '#FFEB3B', '#2196F3', '#4CAF50'];
+    for (let i = 0; i < 4; i++) {
+      ctx.fillStyle = colors[i];
+      ctx.beginPath();
+      ctx.arc(x - r * 0.3 + i * r * 0.2, y + r * 0.6, r * 0.06, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // 名字
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.font = 'bold 15px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(b.name || '', x, y - r - 14);
+    ctx.textAlign = 'left';
+  }
+
+  _drawHuangFeatures(ctx, x, y, r, b) {
+    // 黄老师（体育老师）：运动头带 + 哨子
+    // 头带
+    ctx.fillStyle = '#FF5722';
+    ctx.fillRect(x - r * 0.55, y - r * 0.5, r * 1.1, r * 0.18);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(x - r * 0.15, y - r * 0.5, r * 0.3, r * 0.18);
+    // 眼睛（严厉）
+    ctx.fillStyle = '#333';
+    ctx.beginPath();
+    ctx.arc(x - r * 0.28, y - r * 0.15, r * 0.11, 0, Math.PI * 2);
+    ctx.arc(x + r * 0.28, y - r * 0.15, r * 0.11, 0, Math.PI * 2);
+    ctx.fill();
+    // 眉毛（怒）
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(x - r * 0.4, y - r * 0.35);
+    ctx.lineTo(x - r * 0.15, y - r * 0.28);
+    ctx.moveTo(x + r * 0.4, y - r * 0.35);
+    ctx.lineTo(x + r * 0.15, y - r * 0.28);
+    ctx.stroke();
+    // 嘴（喊话）
+    ctx.fillStyle = '#333';
+    ctx.beginPath();
+    ctx.ellipse(x, y + r * 0.2, r * 0.15, r * 0.1, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // 运动服
+    ctx.fillStyle = b.color || '#4CAF50';
+    ctx.beginPath();
+    ctx.moveTo(x - r * 0.45, y + r * 0.5);
+    ctx.lineTo(x + r * 0.45, y + r * 0.5);
+    ctx.lineTo(x + r * 0.4, y + r * 0.95);
+    ctx.lineTo(x - r * 0.4, y + r * 0.95);
+    ctx.closePath();
+    ctx.fill();
+    // 哨子
+    ctx.fillStyle = '#C0C0C0';
+    ctx.beginPath();
+    ctx.arc(x + r * 0.45, y + r * 0.55, r * 0.12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x + r * 0.2, y + r * 0.5);
+    ctx.lineTo(x + r * 0.35, y + r * 0.55);
+    ctx.stroke();
     // 名字
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
     ctx.font = 'bold 15px sans-serif';
