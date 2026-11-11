@@ -203,9 +203,23 @@ export class MenuScene {
     if (!name || !name.trim()) return;
     const pwd = prompt('输入密码：', '');
     if (pwd === null) return;
-    if (Account.login(name.trim(), pwd)) {
+    const invite = prompt('邀请码（没有可留空，输入7618解锁官方账号）：', '');
+    
+    // 先尝试登录
+    const loginResult = Account.login(name.trim(), pwd);
+    if (loginResult.ok) {
       this.save = Save.load();
-      this._toast('登录成功：' + name.trim());
+      const offMsg = loginResult.isOfficial ? ' [官方]' : '';
+      this._toast('登录成功：' + name.trim() + offMsg);
+      return;
+    }
+    
+    // 登录失败，尝试注册
+    const regResult = Account.register(name.trim(), pwd, invite || '');
+    if (regResult.ok) {
+      this.save = Save.load();
+      const offMsg = regResult.isOfficial ? ' [官方账号·无限金币]' : '';
+      this._toast('注册成功：' + name.trim() + offMsg);
     } else {
       this._toast('登录失败：密码错误');
     }
@@ -589,8 +603,9 @@ export class MenuScene {
     ctx.font = `13px ${FONT}`;
     ctx.textAlign = 'left';
     const acct = (window.__account && window.__account.name) ? window.__account.name : '游客';
+    const isOff = window.__account && window.__account.isOfficial;
     ctx.fillText('账号', 62, by + 28);
-    this._button(ctx, 110, by + 14, 120, 44, acct, 'account', { size: 15, color: '#4ECDC4' });
+    this._button(ctx, 110, by + 14, 140, 44, isOff ? acct + '★' : acct, 'account', { size: 14, color: isOff ? '#FFD666' : '#4ECDC4' });
 
     ctx.fillStyle = 'rgba(255,255,255,0.42)';
     ctx.font = `13px ${FONT}`;
