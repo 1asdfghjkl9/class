@@ -116,6 +116,26 @@ export class Game {
     this.canvas.addEventListener('pointerdown', onDown);
     this.canvas.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+
+    // 账号弹窗键盘输入
+    const onKeyDown = (e) => {
+      if (this.state === STATE.MENU && this.menu && this.menu.accountModal) {
+        if (e.key === 'Backspace') {
+          this.menu.handleAccountKey(null, true);
+          e.preventDefault();
+        } else if (e.key === 'Enter') {
+          this.menu._submitAccount();
+          e.preventDefault();
+        } else if (e.key === 'Escape') {
+          this.menu._closeAccountModal();
+          e.preventDefault();
+        } else if (e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          this.menu.handleAccountKey(e.key, false);
+          e.preventDefault();
+        }
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
   }
 
   _handleClick(x, y) {
