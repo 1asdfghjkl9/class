@@ -1,22 +1,23 @@
 // ============================================================
-// battle/atb.js — 行动条(ATB) + 行动力(AP) + 冷却(CD)
+// battle/atb.js — 回合轮换 + 行动力(AP) + 冷却(CD)
 // ============================================================
 
 import { CONFIG } from '../config.js';
 
-// ATB 管理器
+// 回合轮换管理器：玩家 → 敌方 → 玩家 → ...
 export class ATBSystem {
   constructor() {
-    this.units = [];     // 注册的单位
+    this.units = [];
     this.activeUnit = null;
-    this.frozen = false; // 弹射/动画期间冻结
+    this.frozen = false;
+    this.turnCount = 0; // 总回合数
   }
 
   register(unit) {
     unit.atb = 0;
     unit.ap = 0;
     unit.apMax = CONFIG.AP_MAX;
-    unit.cooldowns = {};  // { skillId: cdLeft }
+    unit.cooldowns = {};
     this.units.push(unit);
   }
 
@@ -24,22 +25,20 @@ export class ATBSystem {
     this.units = this.units.filter(u => u !== unit);
   }
 
-  // 每帧更新 ATB
+  // 不再自动填充行动条；改由 battle 手动切换回合
   update(dt) {
-    if (this.frozen) return null;
-    for (const u of this.units) {
-      if (u.dead) continue;
-      if (u === this.activeUnit) continue;
-      u.atb += u.speed * dt;
-      if (u.atb >= CONFIG.ATB_MAX) {
-        u.atb = CONFIG.ATB_MAX;
-        this.activeUnit = u;
-        // 获得 AP
-        u.ap = Math.min(u.apMax, u.ap + CONFIG.AP_PER_TURN);
-        return u;
-      }
-    }
     return null;
+  }
+
+  // 开始某个单位的回合
+  startTurn(unit) {
+    this.activeUnit = unit;
+    this.frozen = false;
+    this.turnCount++;
+    // 获得 AP
+    const apGain = unit.isPlayer ? CONFIG.AP_PER_TURN : CONFIG.BOSS_AP_PER_TURN || 3;
+    unit.ap = Math.min(unit.apMax, unit.ap + apGain);
+    return unit;
   }
 
   // 结束当前单位的行动
@@ -54,29 +53,37 @@ export class ATBSystem {
   freeze() { this.frozen = true; }
   unfreeze() { this.frozen = false; }
 
-  // 消耗 AP（已取消技能独立冷却，不再推进冷却）
   consumeAP(unit, amount) {
     unit.ap -= amount;
   }
 
-  // 设置技能冷却（已取消技能独立冷却，此方法不再生效）
   startCooldown(unit, skillId, cdMax) {
-    // no-op: 技能不再有独立冷却
+    // 技能有独立冷却
+    if (!unit.cooldowns) unit.cooldowns = {};
+    unit.cooldowns[skillId] = cdMax;
   }
 
-  // 技能是否就绪（已取消技能独立冷却，始终返回 true）
   isReady(unit, skillId) {
-    return true;
+    if (!unit.cooldowns) return true;
+    return !unit.cooldowns[skillId] || unit.cooldowns[skillId] <= 0;
   }
 
-  // 获取冷却进度（已取消技能独立冷却，始终返回 0）
   getCDProgress(unit, skillId, cdMax) {
-    return 0;
+    if (!unit.cooldowns || !unit.cooldowns[skillId]) return 0;
+    return unit.cooldowns[skillId] / cdMax;
   }
 
-  // 待机（AP 不足时）
+  // 每回合结束时推进冷却
+  tickCooldowns(unit) {
+    if (!unit.cooldowns) return;
+    for (const k in unit.cooldowns) {
+      if (unit.cooldowns[k] > 0) unit.cooldowns[k]--;
+    }
+  }
+
   standby(unit) {
-    unit.ap = Math.min(unit.apMax, unit.ap + CONFIG.STANDBY_BONUS_AP);
+    const bonus = CONFIG.STANDBY_BONUS_AP || 3;
+    unit.ap = Math.min(unit.apMax, unit.ap + bonus);
     this.endAction();
   }
 }
