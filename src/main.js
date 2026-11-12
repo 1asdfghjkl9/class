@@ -52,6 +52,8 @@ export class Game {
 
   // ---------- 画布 / 横屏 ----------
   _setupCanvas() {
+    const W = CONFIG.WIDTH, H = CONFIG.HEIGHT;
+    // 自适配：保持 16:9 比例缩放到屏幕
     const scale = Math.min(window.innerWidth / W, window.innerHeight / H);
     this.scale = scale;
     this.canvas.style.width = Math.round(W * scale) + 'px';
@@ -61,6 +63,20 @@ export class Game {
     const ctx = this.ctx;
     ctx.imageSmoothingEnabled = true;
     if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
+
+    // 防止移动端双指缩放和双击放大
+    document.addEventListener('gesturestart', e => e.preventDefault());
+    document.addEventListener('gesturechange', e => e.preventDefault());
+    let lastTouchEnd = 0;
+    document.addEventListener('touchend', (e) => {
+      const now = Date.now();
+      if (now - lastTouchEnd <= 300) e.preventDefault();
+      lastTouchEnd = now;
+    }, { passive: false });
+
+    // 防止页面滚动
+    document.body.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
   }
 
   _checkOrientation() {
@@ -170,8 +186,19 @@ export class Game {
     this.state = STATE.BATTLE;
     this.battleScene = new BattleScene(this.canvas, target, this.saveData, {
       onEnd: (victory, info) => this._onEnd(victory, info),
+      onExit: () => this._onExitBattle(),
     }, opts || {});
     this.battleScene.start();
+  }
+
+  _onExitBattle() {
+    const scene = this.battleScene;
+    this.battleScene = null;
+    if (scene) {
+      try { scene.stop(); } catch (e) { /* ignore */ }
+    }
+    this.state = STATE.MENU;
+    this.menuScene.page = 'home';
   }
 
   _onEnd(victory, info) {
@@ -191,6 +218,19 @@ export class Game {
       title = `${sub ? sub.name : ''} · ${st ? st.name : ''} — ${victory ? '通关' : '失败'}`;
       if (victory && st && sub && st.index + 1 < sub.stages.length) {
         nextTarget = sub.stages[st.index + 1].id;
+      }
+      // 更新学科线进度
+      if (victory && d.subjectId) {
+        if (!this.saveData.progress.stages) this.saveData.progress.stages = {};
+        const cur = this.saveData.progress.stages[d.subjectId] || 0;
+        this.saveData.progress.stages[d.subjectId] = Math.max(cur, (d.stageIndex !== undefined ? d.stageIndex + 1 : cur + 1));
+        // 如果整条线通关，发放徽章
+        const subData = SUBJECTS[d.subjectId];
+        if (subData && this.saveData.progress.stages[d.subjectId] >= subData.stages.length) {
+          if (!this.saveData.progress.subjectBadges) this.saveData.progress.subjectBadges = {};
+          this.saveData.progress.subjectBadges[d.subjectId] = 1;
+        }
+        saveData(this.saveData);
       }
     } else if (d.bossId) {
       const b = BOSSES[d.bossId];
