@@ -1,5 +1,6 @@
 // ============================================================
-// battle/ai.js — 三个 Boss 独立 AI
+// battle/ai.js — 全员 AI（Boss + 学科线学生）
+// 支持平射/吊射、技能偏好（连发/高伤/恶心/散射/治疗）
 // ============================================================
 
 import { CONFIG } from '../config.js';
@@ -9,20 +10,17 @@ export class BossAI {
     this.bossId = bossId;
     this.boss = bossData;
     this.battle = battle;
-    // 通用状态
     this.patrolDir = -1;
     this.patrolX = (bossData.homeX ?? bossData.patrolMin) ?? 1200;
     this.swayPhase = 0;
     this.turnCount = 0;
-    // 金老师专用
+    // Boss 专用状态
     this.rollCallCd = bossData.rollCallInterval ?? 0;
-    this.rollCallWarning = false; // 已举书预警，下回合真正点名
+    this.rollCallWarning = false;
     this.dragClassCd = bossData.dragClassInterval ?? 0;
     this.enraged = false;
-    // 韩老师专用
     this.quizCd = bossData.quizInterval ?? 2;
     this.paperRaged = false;
-    // 吴老师专用
     this.homeworkCd = bossData.homeworkInterval ?? 2;
     this.disciplineCd = bossData.disciplineInterval ?? 3;
     this.disciplineActive = false;
@@ -33,7 +31,6 @@ export class BossAI {
     return this._unit || this.battle.boss;
   }
 
-  // 获取弱点部件状态
   _isWeakpointAlive(id) {
     const u = this.unit;
     if (!u || !u.weakpoints) return false;
@@ -41,19 +38,17 @@ export class BossAI {
     return wp && !wp.destroyed;
   }
 
-  // 通用：Boss 巡逻/晃动位置更新
+  // ===== 位置更新 =====
   updatePosition(dt) {
     const u = this.unit;
     if (!u) return;
-    if (this.bossId === 'jin') {
-      const min = u.patrolMin;
-      const max = u.patrolMax;
-      const sp = u.patrolSpeed;
+    if (this.bossId === 'jin' || this.bossId === 'ding') {
+      const min = u.patrolMin, max = u.patrolMax, sp = u.patrolSpeed;
       this.patrolX += this.patrolDir * sp * dt;
       if (this.patrolX <= min) { this.patrolX = min; this.patrolDir = 1; }
       if (this.patrolX >= max) { this.patrolX = max; this.patrolDir = -1; }
       u.x = this.patrolX;
-    } else if (this.bossId === 'han') {
+    } else if (this.bossId === 'han' || this.bossId === 'huang') {
       this.swayPhase += dt;
       const range = u.swayRange || 30;
       const speed = u.swaySpeed || 1;
@@ -69,45 +64,64 @@ export class BossAI {
       if (this.patrolX >= max) { this.patrolX = max; this.patrolDir = -1; }
       u.x = this.patrolX;
     }
-    // 被束缚 → 不能移动
     if (this.battle.status && this.battle.status.isRooted(u)) return;
     u.y = CONFIG.GROUND_Y - u.radius;
   }
 
-  // 通用：获取普通射击参数（增强 AI：更低误差+预测提前量）
+  // ===== 射击参数：平射 vs 吊射 =====
   getNormalShotParams() {
     const u = this.unit;
     const target = this.battle.player;
     const bx = u.x;
     const by = u.y - u.radius / 2;
     const accMul = this.battle.status ? this.battle.status.getAccuracyModifier(u) : 1;
-    // 预测玩家移动方向，计算提前量
+    
+    // 预测玩家移动
     let leadX = 0;
     if (this.battle._moveLeft || this.battle._moveBtnLeft) leadX = -CONFIG.PLAYER_MOVE_SPEED * 0.3;
     if (this.battle._moveRight || this.battle._moveBtnRight) leadX = CONFIG.PLAYER_MOVE_SPEED * 0.3;
-    const aimErr = (u.aimError || 45) * 0.35; // 误差再降（0.5→0.35）
+    
+    const aimErr = (u.aimError || 42) * 0.35;
     const tx = target.x + leadX + (Math.random() - 0.5) * (aimErr * 2 / Math.max(0.3, accMul));
     const ty = target.y - target.radius;
     const dx = tx - bx;
     const dy = ty - by;
-    const speed = (u.shotSpeed ?? 600) * 1.25; // 射速提升 25%（原15%）
-    const dir = dx >= 0 ? 1 : -1;
-    const vx = dir * speed;
-    const t = Math.max(0.1, Math.abs(dx) / speed);
-    // 解析解：保证抛物线在 t 时刻正好穿过目标点
-    const vy = (ty - by - 0.5 * CONFIG.GRAVITY * t * t) / t;
-    return { x: bx, y: by, vx, vy };
+    const speed = (u.shotSpeed ?? 600) * 1.3;
+    
+    if (u.shotType === 'lob') {
+      // 吊射：高弧线 ∩ 型
+      // 李为先吊射精度更高
+      const lobErr = u.name === '李为先' ? aimErr * 0.4 : aimErr;
+      const lobTx = target.x + leadX + (Math.random() - 0.5) * (lobErr * 2 / Math.max(0.3, accMul));
+      const lobDx = lobTx - bx;
+      const dir = lobDx >= 0 ? 1 : -1;
+      const lobSpeed = speed * 0.75;
+      const t = Math.max(0.3, Math.abs(lobDx) / lobSpeed);
+      // 抛物线高度额外加成
+      const arcHeight = Math.abs(lobDx) * 0.4 + 200;
+      const vy = (ty - by - 0.5 * CONFIG.GRAVITY * t * t - arcHeight) / t;
+      // 调整 vy 使弧线更高
+      const adjustedVy = vy - Math.sqrt(2 * CONFIG.GRAVITY * arcHeight);
+      return { x: bx, y: by, vx: dir * lobSpeed, vy: adjustedVy };
+    } else {
+      // 平射：低弧线直接瞄准
+      const dir = dx >= 0 ? 1 : -1;
+      const vx = dir * speed;
+      const t = Math.max(0.1, Math.abs(dx) / speed);
+      const vy = (ty - by - 0.5 * CONFIG.GRAVITY * t * t) / t;
+      return { x: bx, y: by, vx, vy };
+    }
   }
 
-  // ===== 主入口：Boss 回合决策 =====
+  // ===== 主入口 =====
   decideAction() {
     this.turnCount++;
     switch (this.bossId) {
       case 'jin': return this._jinDecide();
       case 'han': return this._hanDecide();
       case 'wu':  return this._wuDecide();
-      case 'lv':  return this._lvDecide();
-      case 'ma':  return this._maDecide();
+      case 'ding':  return this._lvDecide();
+      case 'huang':  return this._maDecide();
       default:    return this._studentDecide();
     }
   }
@@ -116,81 +130,57 @@ export class BossAI {
   _jinDecide() {
     const boss = this.unit;
     const hpRatio = boss.hp / boss.maxHp;
-
-    // 叫家长（HP <= 25%，更早狂暴）
     if (hpRatio <= (this.boss.enrageThreshold * 1.25) && !this.enraged) {
       this.enraged = true;
       return { type: 'enrage', quote: (this.boss.quotes && this.boss.quotes.enrage) || '叫家长！' };
     }
-
-    // 上回合已举书预警 → 本回合必须点名（最高优先级，不能被拖堂插队）
     if (this.rollCallWarning) {
       this.rollCallWarning = false;
       this.rollCallCd = this.boss.rollCallInterval;
       return { type: 'roll_call', quote: (this.boss.quotes && this.boss.quotes.rollCall) || '点名！' };
     }
-
-    // 拖堂（笔袋存活 + CD 就绪，间隔更短）
     if (this._isWeakpointAlive('penbag') && this.dragClassCd <= 0) {
       this.dragClassCd = Math.max(1, (this.boss.dragClassInterval || 3) - 1);
       return { type: 'drag_class', quote: (this.boss.quotes && this.boss.quotes.dragClass) || '拖堂五分钟。' };
     }
-
-    // 点名预警（英语书存活 + CD 就绪）：先举书，给玩家一回合反应时间
     if (this._isWeakpointAlive('book') && this.rollCallCd <= 0) {
       this.rollCallWarning = true;
       return { type: 'roll_call_warning', quote: '（举起了包着「大富贵」书皮的英语书…）' };
     }
-
-    // 普通弹射
     return { type: 'normal_shot' };
   }
 
   tickCooldowns() {
     if (this.bossId === 'jin') {
-      this.rollCallCd--;
-      this.dragClassCd--;
+      this.rollCallCd--; this.dragClassCd--;
     } else if (this.bossId === 'han') {
       this.quizCd--;
     } else if (this.bossId === 'wu') {
-      this.homeworkCd--;
-      this.disciplineCd--;
+      this.homeworkCd--; this.disciplineCd--;
     }
   }
 
-  // ===== 韩老师 AI =====
   _hanDecide() {
     const boss = this.unit;
     const hpRatio = boss.hp / boss.maxHp;
-
-    // 半血题海（400道题，更早爆发）
     if (hpRatio <= (this.boss.rageThreshold * 1.2) && !this.paperRaged) {
       this.paperRaged = true;
       return { type: 'paper_rage', quote: (this.boss.quotes && this.boss.quotes.rage) || '做四百道题！' };
     }
-
-    // 口答（CD 就绪，间隔更短）
     if (this.quizCd <= 0) {
-      // 试卷被打掉 → 口答间隔变长
       const interval = this._isWeakpointAlive('papers') ? Math.max(1, this.boss.quizInterval - 1) : this.boss.quizInterval;
       this.quizCd = interval;
       return { type: 'quiz', quote: '口答！' };
     }
-
-    // 普通弹射
     return { type: 'normal_shot' };
   }
 
-  // 获取口答限时（秒）
   getQuizTimer() {
     return this._isWeakpointAlive('timer') ? this.boss.quizTimer : this.boss.quizTimerBroken;
   }
 
-  // ===== 吴老师 AI =====
   _wuDecide() {
     const boss = this.unit;
-
-    // 纪律检查（CD 就绪，更频繁）
     if (this.disciplineCd <= 0) {
       const interval = this._isWeakpointAlive('pointer')
         ? Math.max(1, this.boss.disciplineInterval - 1)
@@ -198,94 +188,136 @@ export class BossAI {
       this.disciplineCd = interval;
       return { type: 'discipline', quote: (this.boss.quotes && this.boss.quotes.discipline) || '纪律检查！' };
     }
-
-    // 禁写作业（作业本堆存活 + CD 就绪，更频繁）
     if (this._isWeakpointAlive('homework_stack') && this.homeworkCd <= 0) {
       this.homeworkCd = Math.max(1, this.boss.homeworkInterval - 1);
       return { type: 'homework', quote: (this.boss.quotes && this.boss.quotes.confiscate) || '作业没收！' };
     }
-
-    // 普通弹射
     return { type: 'normal_shot' };
   }
 
-  // ===== 美术老师（吕老师）AI =====
   _lvDecide() {
     const u = this.unit;
     const hpRatio = u.hp / u.maxHp;
     let damageMul = 1;
-
-    // 低血狂暴
     if (hpRatio <= 0.25) damageMul = 1.6;
-
-    // 每3回合：颜料泼溅（范围攻击）
     if (this.turnCount % 3 === 0 && this.turnCount > 0) {
       return { type: 'paint_splash', quote: u.quotes?.dragClass || '', damageMul };
     }
-
-    // 每2回合：速写连射
     if (this.turnCount % 2 === 0) {
       return { type: 'sketch_burst', quote: '', damageMul };
     }
-
     return { type: 'normal_shot', quote: this.turnCount === 1 ? (u.quotes?.intro || '') : '', damageMul };
   }
 
-  // ===== 体育老师（马老师）AI =====
   _maDecide() {
     const u = this.unit;
     const hpRatio = u.hp / u.maxHp;
     let damageMul = 1;
-
-    // 低血狂暴（更早触发，更强）
-    if (hpRatio <= 0.30) {
-      damageMul = 1.8;
-      u.buffMul = 1.8;
-    }
-
-    // 每3回合：实心球重击（高伤+击退）
+    if (hpRatio <= 0.30) { damageMul = 1.8; u.buffMul = 1.8; }
     if (this.turnCount % 3 === 0 && this.turnCount > 0) {
       return { type: 'ball_throw', quote: u.quotes?.quizWrong || '', damageMul };
     }
-
-    // 每2回合：冲刺+冲撞
     if (this.turnCount % 2 === 0) {
       return { type: 'sprint_charge', quote: '', damageMul };
     }
-
     return { type: 'normal_shot', quote: this.turnCount === 1 ? (u.quotes?.intro || '') : '', damageMul };
   }
 
-  // ===== 学生 AI（学科线）=====
+  // ===== 学生 AI（学科线）— 基于射击偏好和技能偏好 =====
   _studentDecide() {
     const u = this.unit;
     const mech = u.mechanics || [];
     const hpRatio = u.hp / u.maxHp;
     let damageMul = 1;
 
-    // 低血狂暴（更早触发）
+    // 低血狂暴
     if (mech.includes('buff_low_hp') && hpRatio <= 0.65) {
       damageMul = 2.0;
       u.buffMul = 2.0;
     } else {
-      u.buffMul = 1.4; // 基础伤害提升（1.2→1.4）
+      u.buffMul = 1.4;
     }
 
-    // 自我护盾（更频繁）
-    if (mech.includes('shield_self') && this.turnCount % 2 === 0) {
-      return { type: 'shield_self', quote: u.quote || '' };
-    }
+    const pref = u.skillPref || 'normal';
+    const tc = this.turnCount;
 
-    // 双发（更频繁）
-    if (mech.includes('double_shot') && this.turnCount % 2 === 0) {
-      return { type: 'double_shot', quote: u.quote || '', damageMul };
+    // ===== 技能偏好决策 =====
+    switch (pref) {
+      case 'rapid':
+        // 连发：优先多发射击
+        if (mech.includes('double_shot') && tc % 2 === 0) {
+          return { type: 'triple_shot', quote: u.quote || '', damageMul };
+        }
+        if (tc % 2 === 0) {
+          return { type: 'double_shot', quote: u.quote || '', damageMul };
+        }
+        break;
+
+      case 'heavy':
+        // 高伤：优先高伤射击
+        if (tc % 3 === 0 && tc > 0) {
+          return { type: 'heavy_shot', quote: u.quote || '', damageMul };
+        }
+        if (mech.includes('double_shot') && tc % 2 === 0) {
+          return { type: 'double_shot', quote: u.quote || '', damageMul };
+        }
+        break;
+
+      case 'annoy':
+        // 恶心：击退/换位/番茄炒蛋
+        if (tc % 3 === 0 && tc > 0) {
+          return { type: 'knockback_shot', quote: u.quote || '', damageMul };
+        }
+        if (tc % 2 === 0) {
+          return { type: 'swap_shot', quote: u.quote || '', damageMul };
+        }
+        if (mech.includes('silence_shot') && tc % 4 === 0) {
+          return { type: 'silence_shot', quote: u.quote || '', damageMul };
+        }
+        break;
+
+      case 'scatter':
+        // 散射：扇形多发
+        if (tc % 2 === 0) {
+          return { type: 'scatter_shot', quote: u.quote || '', damageMul };
+        }
+        if (mech.includes('silence_shot') && tc % 3 === 0) {
+          return { type: 'silence_shot', quote: u.quote || '', damageMul };
+        }
+        break;
+
+      case 'heal':
+        // 治疗/净化：低血时治疗，否则辅助射击
+        if (hpRatio <= 0.5 && tc % 3 === 0) {
+          return { type: 'heal_self', quote: u.quote || '' };
+        }
+        if (mech.includes('shield_self') && tc % 2 === 0) {
+          return { type: 'shield_self', quote: u.quote || '' };
+        }
+        if (tc % 2 === 0) {
+          return { type: 'double_shot', quote: u.quote || '', damageMul };
+        }
+        break;
+
+      default:
+        // normal
+        if (mech.includes('shield_self') && tc % 2 === 0) {
+          return { type: 'shield_self', quote: u.quote || '' };
+        }
+        if (mech.includes('double_shot') && tc % 2 === 0) {
+          return { type: 'double_shot', quote: u.quote || '', damageMul };
+        }
+        if (mech.includes('silence_shot') && tc % 3 === 0) {
+          return { type: 'silence_shot', quote: u.quote || '', damageMul };
+        }
+        break;
     }
 
     // 所有人每3回合有概率三连射
-    if (this.turnCount % 3 === 0 && this.turnCount > 1) {
+    if (tc % 3 === 0 && tc > 1 && Math.random() < 0.5) {
       return { type: 'triple_shot', quote: u.quote || '', damageMul };
     }
 
-    return { type: 'normal_shot', quote: this.turnCount === 1 ? (u.quote || '') : '', damageMul };
+    return { type: 'normal_shot', quote: tc === 1 ? (u.quote || '') : '', damageMul };
   }
 }
