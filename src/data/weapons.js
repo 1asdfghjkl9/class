@@ -10,7 +10,7 @@
 export const WEAPONS = {
   pen_gun: {
     id: 'pen_gun', name: '某人的笔枪', quality: 'green', fireMode: 'single',
-    baseDamage: 38, rounds: 1, shotsPerRound: 1,
+    baseDamage: 24, rounds: 1, shotsPerRound: 1,
     bulletColor: '#333333', bulletRadius: 5, bulletSpeedMul: 1.0,
     desc: '发射长款笔芯，弹速快、弹道直',
     icon: '笔',
