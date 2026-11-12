@@ -31,9 +31,10 @@ export const CONFIG = {
 
   // ---------- AP ----------
   AP_MAX: 12,
-  AP_PER_TURN: 5,
+  AP_PER_TURN: 3,
   NORMAL_SHOT_AP: 0,
   STANDBY_BONUS_AP: 3,
+  BOSS_AP_PER_TURN: 3, // 敌方每回合回复3AP
 
   // ---------- 玩家 ----------
   PLAYER_HP: 140,
@@ -41,6 +42,7 @@ export const CONFIG = {
   PLAYER_X: 200,
   PLAYER_RADIUS: 28,
   PLAYER_MOVE_SPEED: 150,
+  PLAYER_MOVE_MAX: 200, // 每回合最多移动200px
 
   // ---------- 暴击 ----------
   BASE_CRIT: 0.15,
