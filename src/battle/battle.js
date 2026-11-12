@@ -187,6 +187,7 @@ export class BattleScene {
       this.aiTwin = new BossAI(this.bossId, cfg, this);
       this.aiTwin.isTwinAI = true;
       this.aiTwin._unit = this.bossTwin;
+      this.aiTwin.boss = this.bossTwin;
     }
     this.status = new StatusSystem();
 
@@ -323,6 +324,11 @@ export class BattleScene {
       disciplineDamage: cfg.disciplineDamage ?? 30,
       mechanics: [...(cfg.mechanics || [])],
       weakpoints: (cfg.weakpoints || []).map(wp => ({ ...wp, currentHp: wp.hp, destroyed: false })),
+      isPhantom: !!cfg.isPhantom,
+      isTrueForm: !!cfg.isTrueForm,
+      isTwinEnemy: !!cfg.isTwin,
+      shotType: cfg.shotType || 'flat',
+      skillPref: cfg.skillPref || 'normal',
       rage: 0,
       dmgMul: 1,
       atb: 0,
@@ -1282,8 +1288,8 @@ export class BattleScene {
       const seg = this.groundSegments[Math.max(0, Math.min(this.groundSegments.length - 1, segIdx))];
       if (seg && !seg.destroyed) {
         seg.destroyed = true;
-        // 连带破坏左右各 3 段（280px 范围）
-        for (let off = -3; off <= 3; off++) {
+        // 连带破坏左右各 5 段（440px 范围）
+        for (let off = -5; off <= 5; off++) {
           if (off === 0) continue;
           const s2 = this.groundSegments[segIdx + off];
           if (s2 && !s2.destroyed) {
@@ -1432,8 +1438,8 @@ export class BattleScene {
     }
 
     // 技能附加效果
-    if (isPlayerAttack && proj.effect) {
-      this._applySkillEffect(proj, target);
+    if (proj.effect) {
+      this._applySkillEffect(proj, target, isPlayerAttack);
     }
 
     // 统计
@@ -1449,10 +1455,12 @@ export class BattleScene {
   }
 
   // 技能附加效果
-  _applySkillEffect(proj, target) {
+  _applySkillEffect(proj, target, isPlayerAttack) {
     const eff = proj.effect;
     const turns = proj.effectTurns || 1;
     const val = proj.effectValue || 0;
+    // 攻击者：玩家投射物 → 玩家是攻击者；敌人投射物 → 找到来源单位
+    const attacker = isPlayerAttack ? this.player : (proj._sourceUnit || this.boss);
     switch (eff) {
       case 'silence':
         this.status.add(target, 'silence', turns, 0);
@@ -1466,7 +1474,7 @@ export class BattleScene {
         break;
       }
       case 'knockback': {
-        const dir = Math.sign(target.x - this.player.x) || 1;
+        const dir = Math.sign(target.x - attacker.x) || 1;
         target.x = Math.max(120, Math.min(CONFIG.WIDTH - 120, target.x + dir * (val || 130)));
         this._floatText('击退!', '#FFB300', target.x, target.y - target.radius - 30, 22);
         this._addShake(6, 0.2);
@@ -1549,6 +1557,8 @@ export class BattleScene {
         this.boss.isBoss = true;
         this.bossList = this.bossTwin ? [this.boss, this.bossTwin] : [this.boss];
         this.atb.register(this.boss, this.boss.speed);
+        // 更新 AI 引用
+        if (this.ai) this.ai._unit = this.boss;
         this.particles.push(...createHitParticles(this.boss.x, this.boss.y, '#7B1FA2', 40, 3));
         this.audio.play('destroy');
         this._addShake(0.6);
