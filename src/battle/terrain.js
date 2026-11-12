@@ -11,6 +11,9 @@ export const MATERIALS = {
   podium: { hp: 220, destructible: false, color: '#8B7355', stroke: '#5C4A33' },
   paper:  { hp: 25,  destructible: true,  color: '#E8E8E8', stroke: '#BBBBBB' },
   sauce:  { hp: 999, destructible: false, color: '#E64A19', stroke: '#BF360C' },
+  ruler:  { hp: Infinity, destructible: false, color: '#FFD54F', stroke: '#F9A825' },
+  ball:   { hp: Infinity, destructible: false, color: '#FF7043', stroke: '#D84315' },
+  book:   { hp: 80, destructible: true, color: '#90CAF9', stroke: '#1565C0' },
 };
 
 let _idCounter = 0;
@@ -83,43 +86,40 @@ export class TerrainObject {
 }
 
 // ========== 关卡地形工厂 ==========
+// 去掉顶部黑板碰撞箱，只保留左右边界墙
 
+// 通用：只有边界墙（无顶部黑板碰撞）
+function _boundaryWalls() {
+  const list = [];
+  const gy = CONFIG.GROUND_Y;
+  list.push(new TerrainObject({ shape: 'rect', x: 0, y: 0, w: 30, h: gy, material: 'wall' }));
+  list.push(new TerrainObject({ shape: 'rect', x: CONFIG.WIDTH - 30, y: 0, w: 30, h: gy, material: 'wall' }));
+  return list;
+}
+
+// 金老师 — 数学教室：巨型三角尺
 export function createJinLevelTerrain() {
-  const list = [];
-  const gy = CONFIG.GROUND_Y;
-
-  // 地面（可破坏）
-  list.push(new TerrainObject({ shape: 'rect', x: 0, y: gy, w: CONFIG.WIDTH, h: CONFIG.HEIGHT - gy, material: 'wall', destructible: false }));
-  // 边界墙
-  list.push(new TerrainObject({ shape: 'rect', x: 0, y: 0, w: 30, h: gy, material: 'wall' }));
-  list.push(new TerrainObject({ shape: 'rect', x: CONFIG.WIDTH - 30, y: 0, w: 30, h: gy, material: 'wall' }));
-  list.push(new TerrainObject({ shape: 'rect', x: 0, y: 0, w: CONFIG.WIDTH, h: 30, material: 'wall' }));
-
-  return list;
+  return _boundaryWalls();
 }
 
+// 韩老师 — 语文教室：书本堆
 export function createHanLevelTerrain() {
-  const list = [];
-  const gy = CONFIG.GROUND_Y;
-
-  list.push(new TerrainObject({ shape: 'rect', x: 0, y: gy, w: CONFIG.WIDTH, h: CONFIG.HEIGHT - gy, material: 'wall', destructible: false }));
-  list.push(new TerrainObject({ shape: 'rect', x: 0, y: 0, w: 30, h: gy, material: 'wall' }));
-  list.push(new TerrainObject({ shape: 'rect', x: CONFIG.WIDTH - 30, y: 0, w: 30, h: gy, material: 'wall' }));
-  list.push(new TerrainObject({ shape: 'rect', x: 0, y: 0, w: CONFIG.WIDTH, h: 30, material: 'wall' }));
-
-  return list;
+  return _boundaryWalls();
 }
 
+// 吴老师 — 英语教室：词典塔
 export function createWuLevelTerrain() {
-  const list = [];
-  const gy = CONFIG.GROUND_Y;
+  return _boundaryWalls();
+}
 
-  list.push(new TerrainObject({ shape: 'rect', x: 0, y: gy, w: CONFIG.WIDTH, h: CONFIG.HEIGHT - gy, material: 'wall', destructible: false }));
-  list.push(new TerrainObject({ shape: 'rect', x: 0, y: 0, w: 30, h: gy, material: 'wall' }));
-  list.push(new TerrainObject({ shape: 'rect', x: CONFIG.WIDTH - 30, y: 0, w: 30, h: gy, material: 'wall' }));
-  list.push(new TerrainObject({ shape: 'rect', x: 0, y: 0, w: CONFIG.WIDTH, h: 30, material: 'wall' }));
+// 丁老师 — 美术教室：颜料管和画架
+export function createDingLevelTerrain() {
+  return _boundaryWalls();
+}
 
-  return list;
+// 黄老师 — 体育操场：跨栏和球门
+export function createHuangLevelTerrain() {
+  return _boundaryWalls();
 }
 
 // 关卡地形工厂注册表
@@ -127,4 +127,6 @@ export const TERRAIN_FACTORIES = {
   jin: createJinLevelTerrain,
   han: createHanLevelTerrain,
   wu: createWuLevelTerrain,
+  ding: createDingLevelTerrain,
+  huang: createHuangLevelTerrain,
 };
