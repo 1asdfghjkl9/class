@@ -9,7 +9,7 @@ import { AudioSystem } from '../core/audio.js';
 import { SKILLS, skillDamage } from '../data/skills.js';
 import { ITEMS, itemEffectMul } from '../data/items.js';
 import { WEAPONS, weaponDamage, sumAffixes } from '../data/weapons.js';
-import { BOSSES, MINION } from '../data/bosses.js';
+import { BOSSES, MINION, STUDENT_ENEMIES } from '../data/bosses.js';
 import { getStage } from '../data/subjects.js';
 import { MODIFIERS } from '../data/challenges.js';
 import { getRandomQuestion } from '../data/questions.js';
@@ -72,7 +72,15 @@ export class BattleScene {
     if (!bossCfg && !stageCfg) throw new Error('Unknown boss/stage: ' + this.bossId);
     this.isStage = !!stageCfg;
     this.stageCfg = stageCfg;
-    const cfg = bossCfg || stageCfg;
+    // 对于学科线关卡，合并学生敌人战斗数据
+    let cfg = bossCfg || stageCfg;
+    if (stageCfg && stageCfg.enemyId) {
+      const enemy = STUDENT_ENEMIES[stageCfg.enemyId];
+      if (enemy) {
+        cfg = { ...enemy, ...stageCfg, ...enemy }; // enemy 战斗属性优先，但保留 stage 的 weakpoints 等
+        cfg.id = this.bossId; // 保持原始 stageId
+      }
+    }
 
     // --- 天赋 / 修饰符 / 难度 ---
     this.talent = aggregateTalents(this.saveData);
@@ -132,19 +140,23 @@ export class BattleScene {
 
     // --- Boss / 学生 ---
     this.boss = this._buildUnit(cfg, false);
-    if (cfg.isTwin && cfg.twin) {
-      const t = cfg.twin;
-      const baseX = cfg.homeX || 1050;
-      this.bossTwin = this._buildUnit({
-        ...t,
-        id: (cfg.id || 'twin') + '_twin',
-        title: '双胞胎之二',
-        homeX: baseX + (t.offsetX || 110),
-        patrolMin: (cfg.patrolMin || 900) + (t.offsetX || 110),
-        patrolMax: (cfg.patrolMax || 1150) + (t.offsetX || 110),
-        weakpoints: t.weakpoints || [],
-        mechanics: t.mechanics || [],
-      }, true);
+    if (cfg.isTwin && (cfg.twin || cfg.twinId)) {
+      const t = cfg.twin || (cfg.twinId ? STUDENT_ENEMIES[cfg.twinId] : null);
+      if (t) {
+        const baseX = cfg.homeX || 1050;
+        this.bossTwin = this._buildUnit({
+          ...t,
+          id: (cfg.id || 'twin') + '_twin',
+          title: '双胞胎之二',
+          homeX: baseX + (t.offsetX || 110),
+          patrolMin: (cfg.patrolMin || 900) + (t.offsetX || 110),
+          patrolMax: (cfg.patrolMax || 1150) + (t.offsetX || 110),
+          weakpoints: t.weakpoints || [],
+          mechanics: t.mechanics || [],
+        }, true);
+      } else {
+        this.bossTwin = null;
+      }
     } else {
       this.bossTwin = null;
     }
@@ -154,15 +166,14 @@ export class BattleScene {
     const factory = TERRAIN_FACTORIES[this.bossId] || TERRAIN_FACTORIES.jin || (() => []);
     this.terrain = factory();
 
-    // --- 可破坏地面分段 ---
+    // --- 可破坏地面分段（直接破坏：□→凹）---
     const segW = 40;
     const segCount = Math.ceil(CONFIG.WIDTH / segW);
     this.groundSegments = [];
     for (let i = 0; i < segCount; i++) {
       this.groundSegments.push({
         x: i * segW, w: segW,
-        hp: CONFIG.GROUND_HP, maxHp: CONFIG.GROUND_HP,
-        destroyed: false,
+        destroyed: false, // 直接破坏，无HP
       });
     }
 
@@ -223,6 +234,7 @@ export class BattleScene {
     this._moveBtnLeft = false;
     this._moveBtnRight = false;
     this._pendingAimMode = null; // 用于大招/风筝瞄准
+    this.moveUsed = 0; // 本回合已移动距离
 
     // 韩老师口答 / 吴老师纪律
     this.quiz = null;
@@ -383,6 +395,10 @@ export class BattleScene {
     // Boss 入场
     if (this.bossIntroTimer > 0) {
       this.bossIntroTimer -= dt;
+      if (this.bossIntroTimer <= 0) {
+        // 入场结束 → 玩家先手
+        this._switchToPlayer();
+      }
       return;
     }
 
@@ -473,22 +489,32 @@ export class BattleScene {
     this.ai.updatePosition(dt);
     if (this.aiTwin) this.aiTwin.updatePosition(dt);
 
-    const ready = this.atb.update(dt);
-    if (ready) {
-      if (ready === this.player) {
-        this.state = BS.PLAYER_TURN;
-        this.player.shotsThisTurn = 0;
-        this.wind = this._rollWind();
-      } else if (this.bossList.includes(ready)) {
-        this.activeBoss = ready;
-        this.activeAI = (ready === this.bossTwin && this.aiTwin) ? this.aiTwin : this.ai;
-        this.state = BS.BOSS_TURN;
-        this.bossTurnDelay = 0.5;
-      } else {
-        // 小怪行动
-        this._minionAction(ready);
-      }
+    // 回合制轮换：玩家先手 → 敌方 → 玩家 → ...
+    // 由 _switchToPlayer / _switchToBoss 显式切换，WAITING 状态只做待机
+  }
+
+  // 回合制：切换到玩家回合
+  _switchToPlayer() {
+    this.atb.tickCooldowns(this.player);
+    this.atb.startTurn(this.player);
+    this.player.isPlayer = true;
+    this.player.shotsThisTurn = 0;
+    this.moveUsed = 0; // 重置移动步数
+    this.state = BS.PLAYER_TURN;
+    this.wind = this._rollWind();
+  }
+
+  // 回合制：切换到 Boss 回合
+  _switchToBoss() {
+    // 推进所有 Boss 冷却
+    for (const b of this.bossList) {
+      if (!b.dead) this.atb.tickCooldowns(b);
     }
+    this.activeBoss = this.bossList.find(b => !b.dead) || this.bossList[0];
+    this.activeAI = (this.activeBoss === this.bossTwin && this.aiTwin) ? this.aiTwin : this.ai;
+    this.atb.startTurn(this.activeBoss);
+    this.state = BS.BOSS_TURN;
+    this.bossTurnDelay = 0.5;
   }
 
   // ===== 玩家输入 =====
@@ -502,6 +528,15 @@ export class BattleScene {
       this.discipline.violated = true;
       return;
     }
+
+    // 退出按钮（任何状态都可点击）
+    const exitX = CONFIG.WIDTH - 60;
+    const exitY = 10;
+    if (x >= exitX && x <= exitX + 50 && y >= exitY && y <= exitY + 36) {
+      this._exitBattle();
+      return;
+    }
+
     if (this.state !== BS.PLAYER_TURN && this.state !== BS.PLAYER_AIMING) return;
 
     // 检查 UI 点击（技能 / 道具 / 待机）
@@ -606,7 +641,8 @@ export class BattleScene {
       this._resolveDots(this.player);
       this.status.tickTurn();
       this.atb.standby(this.player);
-      this.state = BS.WAITING;
+      // 回合制：待机后切换到 Boss 回合
+      this._switchToBoss();
       return true;
     }
 
@@ -819,9 +855,15 @@ export class BattleScene {
     if (this._moveLeft || this._moveBtnLeft) dx -= 1;
     if (this._moveRight || this._moveBtnRight) dx += 1;
     if (dx !== 0) {
-      p.x += dx * CONFIG.PLAYER_MOVE_SPEED * dt;
-      p.x = Math.max(60, Math.min(CONFIG.WIDTH - 60, p.x));
-      p.facing = dx > 0 ? 1 : -1;
+      const maxMove = CONFIG.PLAYER_MOVE_MAX || 200;
+      const remaining = Math.max(0, maxMove - this.moveUsed);
+      if (remaining > 0) {
+        const moveDist = Math.min(remaining, Math.abs(dx) * CONFIG.PLAYER_MOVE_SPEED * dt);
+        p.x += Math.sign(dx) * moveDist;
+        this.moveUsed += moveDist;
+        p.x = Math.max(60, Math.min(CONFIG.WIDTH - 60, p.x));
+        p.facing = dx > 0 ? 1 : -1;
+      }
     }
     // 检查是否站在可破坏地面空洞上方 → 掉落
     this._checkGroundFall(p);
@@ -864,9 +906,14 @@ export class BattleScene {
       this._addShake(3, 0.1);
       // 检查落地后是否站在洞上
       this._checkGroundFall(this.player);
-      // 风筝使用后不结束回合，回到待命
+      // 风筝使用后回到玩家回合（可继续射击或待机）
       this.state = BS.PLAYER_TURN;
+      this.aimMode = 'normal';
       this.atb.unfreeze();
+      // 如果没有弹丸在飞，不需要保持 FIRING 状态
+      if (this.projectiles.length === 0 && this.pendingShots.length === 0) {
+        // 回到玩家回合，等玩家继续操作
+      }
     }
   }
 
@@ -1230,31 +1277,25 @@ export class BattleScene {
       }
       this._addShake(3, 0.1);
     } else if (hit.type === 'ground') {
-      // 可破坏地面：超大范围损坏（每发破坏 7 段 = 280px）
+      // 直接破坏地面（□→凹）：命中即破坏，无HP
       const segIdx = Math.floor(proj.x / 40);
       const seg = this.groundSegments[Math.max(0, Math.min(this.groundSegments.length - 1, segIdx))];
       if (seg && !seg.destroyed) {
-        seg.hp -= proj.damage * 0.8;
-        if (seg.hp <= 0) {
-          seg.destroyed = true;
-          // 连带损坏左右各 3 段（扩大破坏范围到 280px）
-          for (let off = -3; off <= 3; off++) {
-            if (off === 0) continue;
-            const s2 = this.groundSegments[segIdx + off];
-            if (s2 && !s2.destroyed) {
-              const dmg = Math.abs(off) === 1 ? 60 : Math.abs(off) === 2 ? 40 : 20;
-              s2.hp -= dmg;
-              if (s2.hp <= 0) s2.destroyed = true;
-            }
+        seg.destroyed = true;
+        // 连带破坏左右各 3 段（280px 范围）
+        for (let off = -3; off <= 3; off++) {
+          if (off === 0) continue;
+          const s2 = this.groundSegments[segIdx + off];
+          if (s2 && !s2.destroyed) {
+            s2.destroyed = true;
           }
-          this.audio.play('destroy');
-          this.particles.push(...createHitParticles(proj.x, CONFIG.GROUND_Y, CONFIG.COLORS.groundDark || '#6B5B3F', 28, 2.5));
-          this._addShake(10, 0.3);
-        } else {
-          this.audio.play('hit');
-          this.particles.push(...createHitParticles(proj.x, CONFIG.GROUND_Y, CONFIG.COLORS.ground || '#8B7355', 12));
-          this._addShake(5, 0.15);
         }
+        this.audio.play('destroy');
+        this.particles.push(...createHitParticles(proj.x, CONFIG.GROUND_Y, CONFIG.COLORS.groundDark || '#6B5B3F', 28, 2.5));
+        this._addShake(10, 0.3);
+        // 检查站在被破坏段上的单位是否掉落
+        this._checkGroundFall(this.player);
+        for (const b of this.bossList) this._checkGroundFall(b);
       }
       const decal = createDecal(proj.x, CONFIG.GROUND_Y, 'ground');
       this.decals.push(decal);
@@ -1497,6 +1538,24 @@ export class BattleScene {
     target.hp = 0;
     target.dead = true;
 
+    // 残影机制：朱婉宁·残影受到致命伤时，切换为真身
+    if (target === this.boss && target.isPhantom && !this._phantomShifted) {
+      this._phantomShifted = true;
+      this._floatText('残影消散...真身显现!', '#9C27B0', this.boss.x, this.boss.y - 80, 30);
+      // 加载真身数据
+      const trueForm = STUDENT_ENEMIES['art5'];
+      if (trueForm) {
+        this.boss = this._buildUnit({ ...trueForm, homeX: this.boss.x }, false);
+        this.boss.isBoss = true;
+        this.bossList = this.bossTwin ? [this.boss, this.bossTwin] : [this.boss];
+        this.atb.register(this.boss, this.boss.speed);
+        this.particles.push(...createHitParticles(this.boss.x, this.boss.y, '#7B1FA2', 40, 3));
+        this.audio.play('destroy');
+        this._addShake(0.6);
+      }
+      return;
+    }
+
     if (target.isBoss) {
       this.atb.unregister(target);
       this.particles.push(...createHitParticles(target.x, target.y, target.color || '#FF6B6B', 30, 2.5));
@@ -1540,7 +1599,8 @@ export class BattleScene {
     }
     this.status.consumeOnce(this.player, 'confiscate');
     this.atb.endAction();
-    this.state = BS.WAITING;
+    // 回合制轮换：玩家射击完毕 → 切换到 Boss 回合
+    this._switchToBoss();
     this._saveBattleState();
   }
 
@@ -1819,6 +1879,110 @@ export class BattleScene {
         }
         if (this.bossActionTimer > 1.5) this._endBossAction();
         break;
+
+      // ===== 学生敌人技能 =====
+      case 'heavy_shot':
+        // 高伤单发
+        if (this.bossActionPhase === 0 && this.bossActionTimer > 0.5) {
+          const ai = this.activeAI || this.ai;
+          const unit = this.activeBoss || this.boss;
+          const params = ai.getNormalShotParams();
+          const angle = Math.atan2(params.vy, params.vx);
+          const speed = Math.hypot(params.vx, params.vy) * 1.1;
+          const dmg = Math.round((unit.shotBaseDamage || 14) * 1.8 * (unit.buffMul || 1));
+          const proj = this._spawnProjectile(unit, angle, speed, dmg, '#FF5252');
+          proj.radius = 14;
+          this.audio.play('bossAtk');
+          this.bossActionPhase = 1;
+        }
+        if (this.bossActionTimer > 1.5) this._endBossAction();
+        break;
+
+      case 'knockback_shot':
+        // 击退弹
+        if (this.bossActionPhase === 0 && this.bossActionTimer > 0.5) {
+          const ai = this.activeAI || this.ai;
+          const unit = this.activeBoss || this.boss;
+          const params = ai.getNormalShotParams();
+          const angle = Math.atan2(params.vy, params.vx);
+          const speed = Math.hypot(params.vx, params.vy);
+          const dmg = Math.round((unit.shotBaseDamage || 12) * 1.2 * (unit.buffMul || 1));
+          const proj = this._spawnProjectile(unit, angle, speed, dmg, '#FF9800');
+          proj.effect = 'knockback';
+          proj.effectValue = 150;
+          this.audio.play('bossAtk');
+          this.bossActionPhase = 1;
+        }
+        if (this.bossActionTimer > 1.5) this._endBossAction();
+        break;
+
+      case 'swap_shot':
+        // 换位弹
+        if (this.bossActionPhase === 0 && this.bossActionTimer > 0.5) {
+          const ai = this.activeAI || this.ai;
+          const unit = this.activeBoss || this.boss;
+          const params = ai.getNormalShotParams();
+          const angle = Math.atan2(params.vy, params.vx);
+          const speed = Math.hypot(params.vx, params.vy);
+          const dmg = Math.round((unit.shotBaseDamage || 12) * 1.0 * (unit.buffMul || 1));
+          const proj = this._spawnProjectile(unit, angle, speed, dmg, '#4ECDC4');
+          proj.effect = 'swap';
+          this.audio.play('bossAtk');
+          this.bossActionPhase = 1;
+        }
+        if (this.bossActionTimer > 1.5) this._endBossAction();
+        break;
+
+      case 'scatter_shot':
+        // 散射：5发扇形
+        if (this.bossActionPhase === 0 && this.bossActionTimer > 0.5) {
+          const ai = this.activeAI || this.ai;
+          const unit = this.activeBoss || this.boss;
+          const baseParams = ai.getNormalShotParams();
+          const baseAngle = Math.atan2(baseParams.vy, baseParams.vx);
+          const speed = Math.hypot(baseParams.vx, baseParams.vy);
+          for (let k = -2; k <= 2; k++) {
+            const angle = baseAngle + k * 0.18;
+            const dmg = Math.round((unit.shotBaseDamage || 14) * 0.6 * (unit.buffMul || 1));
+            this.pendingShots.push({ unit, angle, speed, dmg, color: unit.color || '#AB47BC', delay: Math.abs(k) * 0.08 });
+          }
+          this.audio.play('bossAtk');
+          this.bossActionPhase = 1;
+        }
+        if (this.bossActionTimer > 2.0) this._endBossAction();
+        break;
+
+      case 'heal_self':
+        // 自愈
+        if (this.bossActionPhase === 0 && this.bossActionTimer > 0.5) {
+          const unit = this.activeBoss || this.boss;
+          const heal = Math.round(unit.maxHp * 0.2);
+          unit.hp = Math.min(unit.maxHp, unit.hp + heal);
+          this._floatText('+' + heal, '#8BC34A', unit.x, unit.y - unit.radius - 30, 22);
+          this.particles.push(...createHitParticles(unit.x, unit.y - unit.radius, '#8BC34A', 16, 1.2));
+          this.audio.play('hit');
+          this.bossActionPhase = 1;
+        }
+        if (this.bossActionTimer > 1.5) this._endBossAction();
+        break;
+
+      case 'silence_shot':
+        // 沉默弹
+        if (this.bossActionPhase === 0 && this.bossActionTimer > 0.5) {
+          const ai = this.activeAI || this.ai;
+          const unit = this.activeBoss || this.boss;
+          const params = ai.getNormalShotParams();
+          const angle = Math.atan2(params.vy, params.vx);
+          const speed = Math.hypot(params.vx, params.vy);
+          const dmg = Math.round((unit.shotBaseDamage || 12) * 1.0 * (unit.buffMul || 1));
+          const proj = this._spawnProjectile(unit, angle, speed, dmg, '#7B68EE');
+          proj.effect = 'silence';
+          proj.effectTurns = 2;
+          this.audio.play('bossAtk');
+          this.bossActionPhase = 1;
+        }
+        if (this.bossActionTimer > 1.5) this._endBossAction();
+        break;
     }
   }
 
@@ -1840,7 +2004,8 @@ export class BattleScene {
     this.bossActionPhase = 0;
     this.activeAI = null;
     this.activeBoss = null;
-    this.state = BS.WAITING;
+    // 回合制轮换：Boss 行动完毕 → 切换到玩家回合
+    this._switchToPlayer();
   }
 
   // ===== 金老师机制 =====
@@ -2439,53 +2604,38 @@ export class BattleScene {
     ctx.fillRect(1308, gy - 82, 8, 82);
     ctx.globalAlpha = 1;
 
-    // 地面渲染（可破坏分段，更精细）
+    // ===== 学科特色背景装饰（夸张化）=====
+    this._renderSubjectDecor(ctx, gy);
+
+    // 地面渲染（直接破坏：□→凹，无HP）
     for (const seg of this.groundSegments) {
       if (seg.destroyed) continue;
-      const damageRatio = 1 - seg.hp / seg.maxHp;
-
       // 地面顶部草皮/瓷砖线
-      ctx.fillStyle = damageRatio > 0.5 ? '#3E2723' : '#5D4037';
+      ctx.fillStyle = '#5D4037';
       ctx.fillRect(seg.x, gy, seg.w, 4);
-
       // 基础地面色
       const groundGrad = ctx.createLinearGradient(0, gy, 0, CONFIG.HEIGHT);
-      groundGrad.addColorStop(0, damageRatio > 0.5 ? '#4E342E' : '#6D4C41');
-      groundGrad.addColorStop(1, damageRatio > 0.5 ? '#3E2723' : '#4E342E');
+      groundGrad.addColorStop(0, '#6D4C41');
+      groundGrad.addColorStop(1, '#4E342E');
       ctx.fillStyle = groundGrad;
       ctx.fillRect(seg.x, gy + 4, seg.w, CONFIG.HEIGHT - gy - 4);
-
-      // 受损裂纹
-      if (damageRatio > 0.15) {
-        ctx.strokeStyle = `rgba(0,0,0,${0.2 + damageRatio * 0.3})`;
-        ctx.lineWidth = 1 + damageRatio * 2;
-        ctx.beginPath();
-        ctx.moveTo(seg.x + seg.w * 0.15, gy);
-        ctx.lineTo(seg.x + seg.w * 0.45, gy + 15 + damageRatio * 25);
-        ctx.lineTo(seg.x + seg.w * 0.75, gy + 8);
-        ctx.stroke();
+    }
+    // 破坏段边缘锯齿
+    ctx.fillStyle = '#3E2723';
+    for (let i = 0; i < this.groundSegments.length; i++) {
+      const seg = this.groundSegments[i];
+      const prev = this.groundSegments[i - 1];
+      const next = this.groundSegments[i + 1];
+      if (seg.destroyed) continue;
+      // 左侧断崖
+      if (prev && prev.destroyed) {
+        ctx.fillRect(seg.x, gy, 3, CONFIG.HEIGHT - gy);
       }
-      if (damageRatio > 0.5) {
-        ctx.strokeStyle = `rgba(0,0,0,${0.3 + damageRatio * 0.3})`;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(seg.x + seg.w * 0.1, gy + 3);
-        ctx.lineTo(seg.x + seg.w * 0.3, gy + 35);
-        ctx.lineTo(seg.x + seg.w * 0.6, gy + 20);
-        ctx.lineTo(seg.x + seg.w * 0.85, gy + 45);
-        ctx.stroke();
-      }
-      if (damageRatio > 0.8) {
-        // 严重损坏：碎石
-        ctx.fillStyle = 'rgba(0,0,0,0.2)';
-        for (let s = 0; s < 3; s++) {
-          ctx.beginPath();
-          ctx.arc(seg.x + seg.w * (0.2 + s * 0.3), gy + 10 + s * 8, 2, 0, Math.PI * 2);
-          ctx.fill();
-        }
+      // 右侧断崖
+      if (next && next.destroyed) {
+        ctx.fillRect(seg.x + seg.w - 3, gy, 3, CONFIG.HEIGHT - gy);
       }
     }
-
     // 地面瓷砖纹理线
     ctx.strokeStyle = 'rgba(0,0,0,0.06)';
     ctx.lineWidth = 1;
@@ -2502,6 +2652,171 @@ export class BattleScene {
         ctx.stroke();
       }
     }
+  }
+
+  // 学科特色背景装饰（夸张化）
+  _renderSubjectDecor(ctx, gy) {
+    const bid = this.bossId;
+    ctx.save();
+    ctx.globalAlpha = 0.3;
+
+    if (bid === 'jin') {
+      // 数学：巨型三角尺、量角器漂浮在背景
+      ctx.strokeStyle = '#FFD54F';
+      ctx.lineWidth = 4;
+      // 三角尺 1
+      ctx.beginPath();
+      ctx.moveTo(300, gy - 350);
+      ctx.lineTo(500, gy - 350);
+      ctx.lineTo(300, gy - 200);
+      ctx.closePath();
+      ctx.stroke();
+      // 三角尺刻度
+      ctx.lineWidth = 1;
+      for (let i = 1; i < 10; i++) {
+        ctx.beginPath();
+        ctx.moveTo(300 + i * 20, gy - 350);
+        ctx.lineTo(300 + i * 20, gy - 345);
+        ctx.stroke();
+      }
+      // 量角器
+      ctx.strokeStyle = '#81C784';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(1200, gy - 250, 120, Math.PI, 0);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(1080, gy - 250);
+      ctx.lineTo(1320, gy - 250);
+      ctx.stroke();
+      // 漂浮的数字
+      ctx.fillStyle = 'rgba(255,213,79,0.15)';
+      ctx.font = 'bold 60px sans-serif';
+      ctx.fillText('π', 800, gy - 400);
+      ctx.fillText('√', 1000, gy - 500);
+      ctx.fillText('∞', 600, gy - 600);
+    } else if (bid === 'han') {
+      // 语文：巨型毛笔、古诗卷轴
+      ctx.strokeStyle = '#8D6E63';
+      ctx.lineWidth = 6;
+      // 毛笔
+      ctx.beginPath();
+      ctx.moveTo(200, gy - 600);
+      ctx.lineTo(200, gy - 350);
+      ctx.stroke();
+      ctx.fillStyle = '#3E2723';
+      ctx.beginPath();
+      ctx.ellipse(200, gy - 360, 12, 30, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // 卷轴
+      ctx.fillStyle = 'rgba(245,240,224,0.2)';
+      ctx.fillRect(900, gy - 500, 300, 180);
+      ctx.strokeStyle = 'rgba(139,107,63,0.3)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(900, gy - 500, 300, 180);
+      // 竖排文字线
+      for (let i = 0; i < 6; i++) {
+        ctx.beginPath();
+        ctx.moveTo(920 + i * 45, gy - 480);
+        ctx.lineTo(920 + i * 45, gy - 340);
+        ctx.stroke();
+      }
+    } else if (bid === 'wu') {
+      // 英语：巨型字母、词典堆
+      ctx.fillStyle = 'rgba(100,181,249,0.15)';
+      ctx.font = 'bold 120px sans-serif';
+      ctx.fillText('ABC', 250, gy - 350);
+      ctx.font = 'bold 80px sans-serif';
+      ctx.fillText('Hello!', 1000, gy - 500);
+      ctx.fillText('Grammar', 700, gy - 600);
+      // 词典
+      ctx.fillStyle = 'rgba(144,202,249,0.2)';
+      ctx.strokeStyle = 'rgba(21,101,192,0.3)';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 3; i++) {
+        ctx.fillRect(1100 + i * 5, gy - 200 - i * 30, 150, 30);
+        ctx.strokeRect(1100 + i * 5, gy - 200 - i * 30, 150, 30);
+      }
+    } else if (bid === 'ding') {
+      // 美术：巨型调色盘、画笔、颜料溅射
+      ctx.strokeStyle = '#E91E63';
+      ctx.lineWidth = 4;
+      // 调色盘
+      ctx.beginPath();
+      ctx.ellipse(300, gy - 400, 100, 70, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      // 颜料点
+      const colors = ['#F44336', '#FF9800', '#FFEB3B', '#4CAF50', '#2196F3', '#9C27B0'];
+      for (let i = 0; i < colors.length; i++) {
+        ctx.fillStyle = colors[i] + '40';
+        ctx.beginPath();
+        ctx.arc(250 + i * 30, gy - 420, 12, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // 巨型画笔
+      ctx.strokeStyle = '#795548';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(1100, gy - 600);
+      ctx.lineTo(1100, gy - 300);
+      ctx.stroke();
+      ctx.fillStyle = '#E91E6340';
+      ctx.beginPath();
+      ctx.ellipse(1100, gy - 310, 15, 35, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // 颜料溅射
+      for (let i = 0; i < 8; i++) {
+        ctx.fillStyle = colors[i % colors.length] + '20';
+        ctx.beginPath();
+        ctx.arc(500 + Math.random() * 600, gy - 500 + Math.random() * 200, 20 + Math.random() * 30, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (bid === 'huang') {
+      // 体育：跨栏、球门、跑道
+      ctx.strokeStyle = '#FF5722';
+      ctx.lineWidth = 4;
+      // 跨栏
+      for (let i = 0; i < 3; i++) {
+        const hx = 250 + i * 200;
+        ctx.beginPath();
+        ctx.moveTo(hx, gy - 120);
+        ctx.lineTo(hx, gy - 60);
+        ctx.moveTo(hx + 60, gy - 120);
+        ctx.lineTo(hx + 60, gy - 60);
+        ctx.moveTo(hx, gy - 120);
+        ctx.lineTo(hx + 60, gy - 120);
+        ctx.stroke();
+      }
+      // 球门
+      ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(1100, gy - 280);
+      ctx.lineTo(1100, gy - 150);
+      ctx.lineTo(1300, gy - 150);
+      ctx.lineTo(1300, gy - 280);
+      ctx.stroke();
+      // 跑道线
+      ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([20, 15]);
+      ctx.beginPath();
+      ctx.moveTo(0, gy - 20);
+      ctx.lineTo(CONFIG.WIDTH, gy - 20);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // 巨型秒表
+      ctx.strokeStyle = 'rgba(76,175,80,0.2)';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(700, gy - 450, 80, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.font = 'bold 40px sans-serif';
+      ctx.fillStyle = 'rgba(76,175,80,0.15)';
+      ctx.fillText('00:00', 660, gy - 440);
+    }
+
+    ctx.restore();
   }
 
   _darkenColor(hex, factor) {
@@ -2943,9 +3258,9 @@ export class BattleScene {
       this._drawHanFeatures(ctx, x, y, r, b);
     } else if (this.bossId === 'wu') {
       this._drawWuFeatures(ctx, x, y, r, b);
-    } else if (this.bossId === 'lv') {
+    } else if (this.bossId === 'ding') {
       this._drawDingFeatures(ctx, x, y, r, b);
-    } else if (this.bossId === 'ma') {
+    } else if (this.bossId === 'huang') {
       this._drawHuangFeatures(ctx, x, y, r, b);
     } else {
       this._drawStudentFeatures(ctx, x, y, r, b);
@@ -3841,6 +4156,33 @@ export class BattleScene {
     ctx.fillText('待机 +1AP', sbX + 50, sbY + 25);
     ctx.textAlign = 'left';
 
+    // 退出按钮（右上角）
+    const exitX = CONFIG.WIDTH - 60;
+    const exitY = 10;
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(exitX, exitY, 50, 36);
+    ctx.strokeStyle = '#FF6B6B';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(exitX, exitY, 50, 36);
+    ctx.fillStyle = '#FFF';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('退出', exitX + 25, exitY + 23);
+    ctx.textAlign = 'left';
+
+    // 移动步数显示
+    const maxMove = CONFIG.PLAYER_MOVE_MAX || 200;
+    const moveLeft = Math.max(0, maxMove - this.moveUsed);
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(120, y + 50, 80, 14);
+    ctx.fillStyle = '#4ECDC4';
+    ctx.fillRect(122, y + 52, 76 * (moveLeft / maxMove), 10);
+    ctx.fillStyle = '#FFF';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`移动 ${Math.round(moveLeft)}`, 160, y + 60);
+    ctx.textAlign = 'left';
+
     // 普通弹射提示
     ctx.fillStyle = 'rgba(0,0,0,0.4)';
     ctx.fillRect(20, y, 260, 56);
@@ -4065,5 +4407,10 @@ export class BattleScene {
       window.removeEventListener('keydown', this._keyHandler);
       window.removeEventListener('keyup', this._keyHandler);
     }
+  }
+
+  _exitBattle() {
+    this.stop();
+    if (this.onExit) this.onExit();
   }
 }
