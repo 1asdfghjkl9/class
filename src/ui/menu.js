@@ -5,7 +5,7 @@
 // ============================================================
 
 import { CONFIG } from '../config.js';
-import { BOSSES } from '../data/bosses.js';
+import { BOSSES, STUDENT_ENEMIES } from '../data/bosses.js';
 import { SUBJECTS, SUBJECT_ORDER } from '../data/subjects.js';
 import { SKILLS, MAX_EQUIPPED_SKILLS } from '../data/skills.js';
 import { ITEMS, ITEM_POOL } from '../data/items.js';
@@ -139,6 +139,7 @@ export class MenuScene {
       case 'subjectTab': this.subjectTab = arg; break;
       case 'shopTab': this.shopTab = arg; break;
       case 'fightBoss': this._startBoss(arg); break;
+      case 'fightSubject': this._startSubject(arg); break;
       case 'fightStage': this._startStage(arg); break;
       case 'startChallenge': this._startChallenge(arg); break;
       case 'doChallenge': this._startDaily(arg); break;
@@ -293,6 +294,16 @@ export class MenuScene {
       return;
     }
     this._launch(bossId, {});
+  }
+
+  _startSubject(subjectId) {
+    const sub = SUBJECTS[subjectId];
+    if (!sub) return;
+    const cleared = (this.save.progress.stages && this.save.progress.stages[subjectId]) || 0;
+    const nextStage = sub.stages[cleared] || sub.stages[0];
+    if (!nextStage) return;
+    // 用 stageId 作为 bossId 启动战斗
+    this._launch(nextStage.id, { subjectId, stageIndex: cleared });
   }
 
   _startStage(stageId) {
@@ -867,63 +878,60 @@ export class MenuScene {
   // ============================================================
   _render_bosses(ctx) {
     const s = this.save;
-    const ids = ['jin', 'han', 'wu', 'lv', 'ma'];
+    const ids = SUBJECT_ORDER; // ['pe','chinese','art','math','english']
     const cw = 340, ch = 520, gx = 24;
     const startX = (W - (cw * 5 + gx * 4)) / 2;
     const y = 140;
 
     for (let i = 0; i < ids.length; i++) {
       const id = ids[i];
-      const b = BOSSES[id];
-      if (!b) continue;
+      const sub = SUBJECTS[id];
+      if (!sub) continue;
       const x = startX + i * (cw + gx);
-      const cleared = s.progress.bosses[id] === 1;
-      const nm = s.stats.nightmareWins > 0 && cleared;
+      const cleared = s.progress.subjectBadges && s.progress.subjectBadges[id] === 1;
 
       this._card(ctx, x, y, cw, ch, {
-        fill: hexA(b.color, 0.10),
-        stroke: cleared ? '#FFD666' : hexA(b.color, 0.45),
+        fill: hexA(sub.color, 0.10),
+        stroke: cleared ? '#FFD666' : hexA(sub.color, 0.45),
         lw: cleared ? 2.5 : 1.5,
       });
 
-      // 头像
+      // 学科图标
       const cx = x + cw / 2;
       ctx.beginPath();
       ctx.arc(cx, y + 120, 62, 0, Math.PI * 2);
-      ctx.fillStyle = hexA(b.color, 0.28);
+      ctx.fillStyle = hexA(sub.color, 0.28);
       ctx.fill();
-      ctx.strokeStyle = b.color;
+      ctx.strokeStyle = sub.color;
       ctx.lineWidth = 3;
       ctx.stroke();
-      ctx.fillStyle = b.color;
-      ctx.font = `bold 40px ${FONT}`;
+      ctx.fillStyle = sub.color;
+      ctx.font = `bold 36px ${FONT}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText((b.name || '')[0], cx, y + 122);
+      ctx.fillText(sub.icon || sub.name[0], cx, y + 122);
       ctx.textBaseline = 'alphabetic';
 
-      // 名字
+      // 学科名
       ctx.fillStyle = '#FFFFFF';
       ctx.font = `bold 32px ${FONT}`;
-      ctx.fillText(b.name, cx, y + 222);
-      ctx.fillStyle = hexA(b.color, 0.95);
-      ctx.font = `17px ${FONT}`;
-      ctx.fillText(b.title || '', cx, y + 252);
+      ctx.fillText(sub.name + '线', cx, y + 222);
+      ctx.fillStyle = hexA(sub.color, 0.95);
+      ctx.font = `15px ${FONT}`;
+      ctx.fillText(sub.stages.length + ' 关 · ' + sub.stages.map(st => st.name).join('→'), cx, y + 250);
       ctx.textAlign = 'left';
 
-      // 机制标签
-      let ty = y + 300;
-      const mech = {
-        jin: ['点名预警', '拖堂', '狂暴叫家长', '弱点：笔袋 / 英语书'],
-        han: ['口答问题', '题海战术', '狂暴状态', '弱点：试卷 / 计时器'],
-        wu: ['禁写作业', '纪律检查', '没收作业', '弱点：教鞭 / 作业本'],
-      }[id] || [];
+      // 角色列表
+      let ty = y + 285;
       ctx.textAlign = 'center';
-      for (const m of mech) {
-        ctx.fillStyle = 'rgba(255,255,255,0.62)';
-        ctx.font = `14px ${FONT}`;
-        ctx.fillText('· ' + m, cx, ty);
-        ty += 26;
+      const stageCleared = (s.progress.stages && s.progress.stages[id]) || 0;
+      for (let si = 0; si < sub.stages.length; si++) {
+        const stage = sub.stages[si];
+        const done = si < stageCleared;
+        ctx.fillStyle = done ? '#FFD666' : 'rgba(255,255,255,0.55)';
+        ctx.font = `${done ? 'bold ' : ''}14px ${FONT}`;
+        ctx.fillText((done ? '✓ ' : '· ') + stage.name, cx, ty);
+        ty += 24;
       }
       ctx.textAlign = 'left';
 
@@ -931,19 +939,19 @@ export class MenuScene {
       ctx.textAlign = 'center';
       ctx.fillStyle = cleared ? '#FFD666' : 'rgba(255,255,255,0.35)';
       ctx.font = `bold 16px ${FONT}`;
-      ctx.fillText(cleared ? '已通关' + (nm ? ' · 噩梦已挑战' : '') : '未通关', cx, y + 452);
+      ctx.fillText(cleared ? '已获徽章' : (stageCleared > 0 ? `进行中 (${stageCleared}/${sub.stages.length})` : '未开始'), cx, y + 452);
       ctx.textAlign = 'left';
 
       // 按钮
-      this._button(ctx, x + 60, y + 478, cw - 120, 58, cleared ? '再战一次' : '开始挑战', 'fightBoss:' + id, {
-        color: b.color, size: 22,
+      this._button(ctx, x + 60, y + 478, cw - 120, 58, stageCleared > 0 ? '继续挑战' : '开始挑战', 'fightSubject:' + id, {
+        color: sub.color, size: 22,
       });
     }
 
     ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(255,255,255,0.35)';
     ctx.font = `14px ${FONT}`;
-    ctx.fillText('三位老师都可以自由选择挑战顺序 · 难度与挑战条件在首页 / 挑战页设置', W / 2, H - 52);
+    ctx.fillText('五条学科线可自由选择挑战顺序 · 通关整条线获得该学科徽章', W / 2, H - 52);
     ctx.textAlign = 'left';
   }
 
