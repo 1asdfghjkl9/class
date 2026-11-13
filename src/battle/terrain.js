@@ -66,21 +66,37 @@ export const MATERIALS = {
 // ---------- 悬空平台（高度图制：点拼成，圆形弹坑）----------
 export function createPlatform(x, y, w, h) {
   const heightmap = new Float32Array(w);
-  heightmap.fill(y); // 初始表面 Y = 平台顶部
-  return { x, y, w, h, width: w, heightmap };
+  heightmap.fill(y); // 顶部表面 Y
+  const bottomHeightmap = new Float32Array(w);
+  bottomHeightmap.fill(y + h); // 底部表面 Y
+  return { x, y, w, h, width: w, heightmap, bottomHeightmap };
 }
 
-// 检测弹丸与平台碰撞（高度图制）
+// 检测弹丸与平台碰撞（高度图制，区分上方/下方命中）
 export function checkPlatformHit(px, py, pr, platforms) {
   if (!platforms) return null;
   for (const plat of platforms) {
     if (px < plat.x - pr || px > plat.x + plat.w + pr) continue;
     const localX = Math.floor(px - plat.x);
     if (localX < 0 || localX >= plat.width) continue;
-    const surfY = plat.heightmap[localX];
-    // 弹丸底部触到平台表面 → 碰撞
-    if (py + pr >= surfY && py - pr <= plat.y + plat.h) {
-      return { platform: plat, localX, point: { x: px, y: surfY } };
+    const topY = plat.heightmap[localX];
+    const botY = plat.bottomHeightmap[localX];
+    // 从上方命中（弹丸底部触到顶面）
+    if (py + pr >= topY && py < topY + 5) {
+      return { platform: plat, localX, fromBottom: false, point: { x: px, y: topY } };
+    }
+    // 从下方命中（弹丸顶部触到底面）
+    if (py - pr <= botY && py > botY - 5) {
+      return { platform: plat, localX, fromBottom: true, point: { x: px, y: botY } };
+    }
+    // 弹丸在平台内部（穿透中）
+    if (py + pr >= topY && py - pr <= botY) {
+      // 判断更接近哪个面
+      if (py < (topY + botY) / 2) {
+        return { platform: plat, localX, fromBottom: false, point: { x: px, y: topY } };
+      } else {
+        return { platform: plat, localX, fromBottom: true, point: { x: px, y: botY } };
+      }
     }
   }
   return null;
@@ -123,11 +139,11 @@ function _plat(x, y, w, h) { return { x, y, w, h }; }
 function _peTerrain() { return []; }
 function _pePlatforms() {
   return [
-    _plat(280, 820, 120, 20),   // 跨栏平台1
-    _plat(480, 760, 100, 20),   // 跨栏平台2
-    _plat(680, 820, 120, 20),   // 球门横梁
-    _plat(920, 700, 140, 20),   // 看台台阶1
-    _plat(1120, 780, 120, 20),  // 看台台阶2
+    _plat(280, 820, 120, 35),   // 跨栏平台1
+    _plat(480, 760, 100, 35),   // 跨栏平台2
+    _plat(680, 820, 120, 35),   // 球门横梁
+    _plat(920, 700, 140, 35),   // 看台台阶1
+    _plat(1120, 780, 120, 35),  // 看台台阶2
     _plat(380, 640, 80, 140),   // 跨栏柱（高）
   ];
 }
@@ -136,12 +152,12 @@ function _pePlatforms() {
 function _chineseTerrain() { return []; }
 function _chinesePlatforms() {
   return [
-    _plat(300, 840, 100, 20),   // 书堆底层
-    _plat(440, 780, 120, 20),   // 书堆中层
-    _plat(580, 720, 100, 20),   // 书堆顶层
-    _plat(800, 800, 160, 20),   // 卷轴桥
-    _plat(1050, 700, 80, 20),   // 书本塔顶
-    _plat(1050, 760, 80, 20),   // 书本塔中
+    _plat(300, 840, 100, 35),   // 书堆底层
+    _plat(440, 780, 120, 35),   // 书堆中层
+    _plat(580, 720, 100, 35),   // 书堆顶层
+    _plat(800, 800, 160, 35),   // 卷轴桥
+    _plat(1050, 700, 80, 35),   // 书本塔顶
+    _plat(1050, 760, 80, 35),   // 书本塔中
     _plat(380, 620, 100, 140),  // 书架柱
   ];
 }
@@ -152,10 +168,10 @@ function _artPlatforms() {
   return [
     _plat(320, 800, 60, 140),   // 画架左腿
     _plat(420, 800, 60, 140),   // 画架右腿
-    _plat(370, 740, 140, 20),   // 画架横梁
-    _plat(620, 780, 180, 20),   // 调色盘大平台
-    _plat(900, 820, 120, 20),   // 颜料管斜坡1
-    _plat(1080, 740, 100, 20),  // 颜料管斜坡2
+    _plat(370, 740, 140, 35),   // 画架横梁
+    _plat(620, 780, 180, 35),   // 调色盘大平台
+    _plat(900, 820, 120, 35),   // 颜料管斜坡1
+    _plat(1080, 740, 100, 35),  // 颜料管斜坡2
     _plat(250, 660, 80, 140),   // 颜料瓶柱
   ];
 }
@@ -164,13 +180,13 @@ function _artPlatforms() {
 function _mathTerrain() { return []; }
 function _mathPlatforms() {
   return [
-    _plat(300, 820, 80, 20),    // 三角尺底
-    _plat(380, 740, 80, 20),    // 三角尺中
-    _plat(460, 660, 80, 20),    // 三角尺顶
-    _plat(620, 780, 200, 20),   // 量角器弧形桥
-    _plat(900, 820, 100, 20),   // 圆规左脚
-    _plat(1080, 820, 100, 20),  // 圆规右脚
-    _plat(990, 700, 100, 20),   // 圆规顶
+    _plat(300, 820, 80, 35),    // 三角尺底
+    _plat(380, 740, 80, 35),    // 三角尺中
+    _plat(460, 660, 80, 35),    // 三角尺顶
+    _plat(620, 780, 200, 35),   // 量角器弧形桥
+    _plat(900, 820, 100, 35),   // 圆规左脚
+    _plat(1080, 820, 100, 35),  // 圆规右脚
+    _plat(990, 700, 100, 35),   // 圆规顶
     _plat(250, 680, 60, 140),   // 直尺柱
   ];
 }
@@ -179,13 +195,13 @@ function _mathPlatforms() {
 function _englishTerrain() { return []; }
 function _englishPlatforms() {
   return [
-    _plat(300, 820, 80, 20),    // 词典塔底
-    _plat(300, 760, 80, 20),    // 词典塔中
-    _plat(300, 700, 80, 20),    // 词典塔顶
-    _plat(460, 780, 180, 20),   // 字母桥
-    _plat(720, 820, 120, 20),   // 阶梯1
-    _plat(900, 760, 120, 20),   // 阶梯2
-    _plat(1080, 700, 120, 20),  // 阶梯3
-    _plat(1200, 640, 80, 20),   // 顶部小台
+    _plat(300, 820, 80, 35),    // 词典塔底
+    _plat(300, 760, 80, 35),    // 词典塔中
+    _plat(300, 700, 80, 35),    // 词典塔顶
+    _plat(460, 780, 180, 35),   // 字母桥
+    _plat(720, 820, 120, 35),   // 阶梯1
+    _plat(900, 760, 120, 35),   // 阶梯2
+    _plat(1080, 700, 120, 35),  // 阶梯3
+    _plat(1200, 640, 80, 35),   // 顶部小台
   ];
 }
