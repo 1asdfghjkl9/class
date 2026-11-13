@@ -1198,19 +1198,27 @@ export class BattleScene {
       }
       if (!proj.alive) continue;
 
-      // 平台高度图碰撞（圆形弹坑）
+      // 平台高度图碰撞（圆形弹坑，区分上方/下方命中）
       const platHit = checkPlatformHit(proj.x, proj.y, proj.radius, this.platforms);
       if (platHit) {
         const plat = platHit.platform;
-        const cx = platHit.localX; // 平台内局部 x
+        const cx = platHit.localX;
+        const fromBottom = platHit.fromBottom;
         const radius = Math.max(16, proj.radius * 5);
-        const maxDepth = Math.min(plat.h * 0.8, radius * 0.8);
+        const maxDepth = Math.min(plat.h * 0.7, radius * 0.7);
         for (let dx = -radius; dx <= radius; dx++) {
           const xi = cx + dx;
           if (xi < 0 || xi >= plat.width) continue;
           const ratio = Math.sqrt(Math.max(0, 1 - (dx * dx) / (radius * radius)));
-          const newDepth = plat.y + maxDepth * ratio;
-          plat.heightmap[xi] = Math.max(plat.heightmap[xi], newDepth);
+          if (fromBottom) {
+            // 从下方打：底面向上凹陷
+            const newBot = plat.y + plat.h - maxDepth * ratio;
+            plat.bottomHeightmap[xi] = Math.min(plat.bottomHeightmap[xi], newBot);
+          } else {
+            // 从上方打：顶面向下凹陷
+            const newTop = plat.y + maxDepth * ratio;
+            plat.heightmap[xi] = Math.max(plat.heightmap[xi], newTop);
+          }
         }
         this.audio.play('destroy');
         this.particles.push(...createHitParticles(proj.x, proj.y, '#8D6E63', 16, 1.8));
@@ -1454,6 +1462,22 @@ export class BattleScene {
     // 技能附加效果
     if (proj.effect) {
       this._applySkillEffect(proj, target, isPlayerAttack);
+    }
+
+    // 命中单位也产生较小坑
+    {
+      const cx = Math.floor(proj.x);
+      const r = Math.max(12, proj.radius * 3);
+      const md = Math.min(this.GROUND_MAX_DEPTH * 0.3, r * 0.6);
+      for (let dx = -r; dx <= r; dx++) {
+        const xi = cx + dx;
+        if (xi < 0 || xi >= CONFIG.WIDTH) continue;
+        const ratio = Math.sqrt(Math.max(0, 1 - (dx * dx) / (r * r)));
+        const newDepth = CONFIG.GROUND_Y + md * ratio;
+        this.groundHeightmap[xi] = Math.max(this.groundHeightmap[xi], newDepth);
+      }
+      this._checkGroundFall(this.player);
+      for (const b of this.bossList) this._checkGroundFall(b);
     }
 
     // 统计
@@ -2023,17 +2047,34 @@ export class BattleScene {
       }
 
       case 'enemy_stealth': {
-        // ★ 盛丽文隐身
+        // ★ 盛丽文隐身 + 风筝连招
         const unit = this.activeBoss || this.boss;
         if (this.bossActionPhase === 0 && this.bossActionTimer > 0.5) {
           this.status.add(unit, 'stealth', 2, 0.4);
           this._floatText('隐身!', '#4ECDC4', unit.x, unit.y - unit.radius - 40, 24);
-          // 虚化粒子
           this.particles.push(...createHitParticles(unit.x, unit.y - unit.radius, '#4ECDC4', 20, 1.5));
           this.audio.play('button');
           this.bossActionPhase = 1;
         }
-        if (this.bossActionTimer > 1.5) this._endBossAction();
+        // 隐身结束后连风筝（位移到玩家附近）
+        if (this.bossActionPhase === 1 && this.bossActionTimer > 1.8) {
+          const target = this.player;
+          const oldX = unit.x;
+          const dir = target.x < unit.x ? -1 : 1;
+          unit.x = Math.max(200, Math.min(CONFIG.WIDTH - 200, target.x + dir * 150));
+          unit.y = this._groundYAt(unit.x) - unit.radius;
+          // 风筝轨迹粒子
+          for (let t = 0; t <= 1; t += 0.1) {
+            const px = oldX + (unit.x - oldX) * t;
+            const py = unit.y - 80 + Math.sin(t * Math.PI) * 120;
+            this.particles.push(...createHitParticles(px, py, '#4ECDC4', 4, 0.8));
+          }
+          this._floatText('风筝!', '#4ECDC4', unit.x, unit.y - unit.radius - 40, 24);
+          this.audio.play('destroy');
+          this._addShake(6, 0.3);
+          this.bossActionPhase = 2;
+        }
+        if (this.bossActionTimer > 3.0) this._endBossAction();
         break;
       }
 
@@ -2552,10 +2593,10 @@ export class BattleScene {
 
     // 渐变天空（更丰富的渐变）
     const grad = ctx.createLinearGradient(0, 0, 0, gy);
-    grad.addColorStop(0, this._darkenColor(bgColor, 0.22));
-    grad.addColorStop(0.3, this._darkenColor(bgColor, 0.38));
-    grad.addColorStop(0.6, this._darkenColor(bgColor, 0.52));
-    grad.addColorStop(1, this._darkenColor(bgColor, 0.68));
+    grad.addColorStop(0, this._darkenColor(bgColor, 0.05));
+    grad.addColorStop(0.3, this._darkenColor(bgColor, 0.12));
+    grad.addColorStop(0.6, this._darkenColor(bgColor, 0.22));
+    grad.addColorStop(1, this._darkenColor(bgColor, 0.35));
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, CONFIG.WIDTH, gy);
 
@@ -2743,7 +2784,7 @@ export class BattleScene {
           craterStart = x;
         } else if (!inCrater && craterStart >= 0) {
           // 填充坑腔：从gy到坑底，用背景色
-          ctx.fillStyle = '#1a1a2e'; // 背景色（教室深色）
+          ctx.fillStyle = '#3a3a5e'; // 背景色（教室深色）
           ctx.beginPath();
           ctx.moveTo(craterStart, gy);
           for (let xx = craterStart; xx < x; xx++) ctx.lineTo(xx, hm[xx]);
@@ -2798,69 +2839,42 @@ export class BattleScene {
       }
     }
 
-    // ===== 悬空平台渲染（高度图：平滑曲线，圆形弹坑，坑腔透明）=====
+    // ===== 悬空平台渲染（高度图：顶面+底面，圆形弹坑，坑腔透明）=====
     for (const plat of this.platforms) {
       const phm = plat.heightmap;
+      const pbm = plat.bottomHeightmap;
       if (!phm) continue;
       const pw = plat.width;
       const px0 = plat.x;
       const py0 = plat.y;
       const ph = plat.h;
-      // 填充平台体
+      // 填充平台体（顶面到底面之间的实体）
       ctx.beginPath();
-      ctx.moveTo(px0, py0 + ph);
-      ctx.lineTo(px0, phm[0]);
-      for (let x = 1; x < pw; x++) {
-        ctx.lineTo(px0 + x, phm[x]);
-      }
-      ctx.lineTo(px0 + pw, py0 + ph);
+      ctx.moveTo(px0, pbm[0]);
+      for (let x = 1; x < pw; x++) ctx.lineTo(px0 + x, pbm[x]);
+      for (let x = pw - 1; x >= 0; x--) ctx.lineTo(px0 + x, phm[x]);
       ctx.closePath();
       const platGrad = ctx.createLinearGradient(0, py0, 0, py0 + ph);
       platGrad.addColorStop(0, '#8D6E63');
       platGrad.addColorStop(1, '#5D4037');
       ctx.fillStyle = platGrad;
       ctx.fill();
-      // 挖空平台弹坑内部
-      let pCraterStart = -1;
-      for (let x = 0; x <= pw; x++) {
-        const dy = x < pw ? (phm[x] - py0) : 0;
-        const inC = dy > 2;
-        if (inC && pCraterStart < 0) pCraterStart = x;
-        else if (!inC && pCraterStart >= 0) {
-          ctx.fillStyle = '#1a1a2e';
-          ctx.beginPath();
-          ctx.moveTo(px0 + pCraterStart, py0);
-          for (let xx = pCraterStart; xx < x; xx++) ctx.lineTo(px0 + xx, phm[xx]);
-          ctx.lineTo(px0 + x - 1, py0);
-          ctx.closePath();
-          ctx.fill();
-          pCraterStart = -1;
-        }
-      }
-      // 坑壁内描边
-      ctx.strokeStyle = '#3E2723';
-      ctx.lineWidth = 2;
-      let pInCrater = false;
-      ctx.beginPath();
-      for (let x = 0; x < pw; x++) {
-        if (phm[x] - py0 > 2) {
-          if (!pInCrater) { ctx.moveTo(px0 + x, phm[x]); pInCrater = true; }
-          else ctx.lineTo(px0 + x, phm[x]);
-        } else {
-          if (pInCrater) { ctx.stroke(); ctx.beginPath(); pInCrater = false; }
-        }
-      }
-      if (pInCrater) ctx.stroke();
-      // 平台表面线
+      // 顶面表面线
       ctx.strokeStyle = '#A1887F';
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(px0, phm[0]);
       for (let x = 1; x < pw; x++) ctx.lineTo(px0 + x, phm[x]);
       ctx.stroke();
+      // 底面表面线
+      ctx.strokeStyle = '#5D4037';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(px0, pbm[0]);
+      for (let x = 1; x < pw; x++) ctx.lineTo(px0 + x, pbm[x]);
+      ctx.stroke();
       // 底部阴影
       ctx.fillStyle = 'rgba(0,0,0,0.25)';
-      ctx.fillRect(px0, py0 + ph - 3, pw, 3);
       ctx.strokeStyle = '#3E2723';
       ctx.lineWidth = 1;
       ctx.strokeRect(px0, py0, pw, ph);
@@ -3306,13 +3320,13 @@ export class BattleScene {
     ctx.arc(-4, -3, 4, 0, Math.PI * 2);
     ctx.arc(6, -3, 4, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#1a1a2e';
+    ctx.fillStyle = '#3a3a5e';
     ctx.beginPath();
     ctx.arc(-3, -2, 2, 0, Math.PI * 2);
     ctx.arc(7, -2, 2, 0, Math.PI * 2);
     ctx.fill();
     // 张嘴笑
-    ctx.strokeStyle = '#1a1a2e';
+    ctx.strokeStyle = '#3a3a5e';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.arc(1, 4, 5, 0.1, Math.PI - 0.1);
@@ -3518,10 +3532,8 @@ export class BattleScene {
     // ★ 隐身虚化特效
     const bossStealthed = this.status && this.status.has(b, 'stealth');
     if (bossStealthed) {
-      const pulse = 0.3 + Math.sin(this.time * 4) * 0.1;
-      ctx.globalAlpha = pulse;
-      ctx.shadowColor = '#4ECDC4';
-      ctx.shadowBlur = 15;
+      // ★ 敌方隐身：直接看不见
+      ctx.globalAlpha = 0;
     }
 
     // 掉落状态：旋转 + 渐隐
