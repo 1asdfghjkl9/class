@@ -5,8 +5,8 @@
 import { CONFIG } from '../config.js';
 
 // 检测弹丸与所有碰撞体
-// 返回 { hit: true/false, target, point, terrainObj }
-export function checkCollision(projectile, terrainList, units, groundSegments) {
+// groundHeightmap: Float32Array, 每像素一个地面Y值
+export function checkCollision(projectile, terrainList, units, groundHeightmap) {
   const px = projectile.x;
   const py = projectile.y;
   const pr = projectile.radius;
@@ -19,41 +19,16 @@ export function checkCollision(projectile, terrainList, units, groundSegments) {
     }
   }
 
-  // 2. 地面碰撞（半球形坑：只在坑底以上的破坏段才穿过）
-  if (py >= CONFIG.GROUND_Y - pr && py < CONFIG.GROUND_Y + 5) {
-    if (groundSegments) {
-      const segIdx = Math.max(0, Math.min(groundSegments.length - 1, Math.floor(px / 40)));
-      const seg = groundSegments[segIdx];
-      if (seg && seg.destroyed) {
-        // 坑内：弹丸在坑底以上 → 穿过；到坑底 → 碰撞
-        const craterBottom = CONFIG.GROUND_Y + (seg.craterDepth || 0);
-        if (py >= craterBottom - pr) {
-          return { type: 'ground', point: { x: px, y: craterBottom }, normal: { x: 0, y: -1 } };
-        }
-        // 穿过坑内空间
-      } else {
-        return { type: 'ground', point: { x: px, y: CONFIG.GROUND_Y }, normal: { x: 0, y: -1 } };
-      }
-    } else {
-      return { type: 'ground', point: { x: px, y: CONFIG.GROUND_Y }, normal: { x: 0, y: -1 } };
+  // 2. 地面碰撞（高度图：弹丸触到地面表面就碰撞）
+  if (px >= 0 && px < CONFIG.WIDTH && groundHeightmap) {
+    const xi = Math.floor(px);
+    const groundY = groundHeightmap[xi];
+    // 弹丸底部触到地面表面 → 碰撞
+    if (py + pr >= groundY) {
+      return { type: 'ground', point: { x: px, y: groundY }, normal: { x: 0, y: -1 } };
     }
-  }
-  if (py >= CONFIG.GROUND_Y) {
-    if (groundSegments) {
-      const segIdx = Math.max(0, Math.min(groundSegments.length - 1, Math.floor(px / 40)));
-      const seg = groundSegments[segIdx];
-      if (seg && seg.destroyed) {
-        const craterBottom = CONFIG.GROUND_Y + (seg.craterDepth || 0);
-        if (py >= craterBottom - pr) {
-          return { type: 'ground', point: { x: px, y: craterBottom }, normal: { x: 0, y: -1 } };
-        }
-        // 在坑内空间，穿过
-      } else {
-        return { type: 'ground', point: { x: px, y: CONFIG.GROUND_Y }, normal: { x: 0, y: -1 } };
-      }
-    } else {
-      return { type: 'ground', point: { x: px, y: CONFIG.GROUND_Y }, normal: { x: 0, y: -1 } };
-    }
+  } else if (py + pr >= CONFIG.GROUND_Y) {
+    return { type: 'ground', point: { x: px, y: CONFIG.GROUND_Y }, normal: { x: 0, y: -1 } };
   }
 
   // 3. 单位碰撞（Boss、小怪、玩家）
@@ -93,7 +68,7 @@ export function checkCollision(projectile, terrainList, units, groundSegments) {
 
 // 生成贴花
 export function createDecal(x, y, material) {
-  const r = 8 + Math.random() * 8;  // 8-16
+  const r = 8 + Math.random() * 8;
   const seed = Math.random() * 9999;
   let type = 'crater';
   if (material === 'wood') type = 'crack';
