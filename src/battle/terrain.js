@@ -1,76 +1,44 @@
 // ============================================================
-// battle/terrain.js — 地形对象与关卡地形（5学科独立地图）
-// 平台采用分段制：和地面一样打出一个坑，坑多了变洞
+// battle/terrain.js — 地形对象 + 学科特有地图 + 悬空平台（高度图制）
 // ============================================================
 
 import { CONFIG } from '../config.js';
 
-// 材质属性表
-export const MATERIALS = {
-  wood:   { hp: 60,  destructible: true,  color: '#C89B6A', stroke: '#8B6B3F' },
-  wall:   { hp: Infinity, destructible: false, color: '#F5F0E1', stroke: '#C0BBA8' },
-  podium: { hp: 220, destructible: false, color: '#8B7355', stroke: '#5C4A33' },
-  paper:  { hp: 25,  destructible: true,  color: '#E8E8E8', stroke: '#BBBBBB' },
-  sauce:  { hp: 999, destructible: false, color: '#E64A19', stroke: '#BF360C' },
-  ruler:  { hp: Infinity, destructible: false, color: '#FFD54F', stroke: '#F9A825' },
-  ball:   { hp: Infinity, destructible: false, color: '#FF7043', stroke: '#D84315' },
-  book:   { hp: 80, destructible: true, color: '#90CAF9', stroke: '#1565C0' },
-  platform: { hp: Infinity, destructible: false, color: '#8D6E63', stroke: '#5D4037' },
-};
-
-let _idCounter = 0;
-
+// ---------- 地形对象 ----------
 export class TerrainObject {
   constructor(opts) {
-    this.id = ++_idCounter;
-    this.shape = opts.shape || 'rect';
     this.x = opts.x;
     this.y = opts.y;
-    this.w = opts.w || 0;
-    this.h = opts.h || 0;
-    this.r = opts.r || 0;
-    this.material = opts.material;
-    this.destructible = opts.destructible !== undefined ? opts.destructible : (MATERIALS[this.material]?.destructible ?? false);
-    this.maxHp = opts.hp ?? (MATERIALS[this.material]?.hp ?? 100);
-    this.hp = this.maxHp;
+    this.w = opts.w;
+    this.h = opts.h;
+    this.shape = opts.shape || 'rect';
+    this.material = opts.material || 'wall';
+    this.destructible = opts.destructible !== false;
+    this.hp = opts.hp || 100;
+    this.maxHp = this.hp;
     this.destroyed = false;
     this.decals = [];
-    this.crackStage = 0;
+    this.material = opts.material || 'wall';
   }
 
-  containsPoint(px, py) {
-    if (this.destroyed) return false;
-    if (this.shape === 'rect') {
-      return px >= this.x && px <= this.x + this.w &&
-             py >= this.y && py <= this.y + this.h;
-    } else {
-      const dx = px - this.x;
-      const dy = py - this.y;
-      return dx * dx + dy * dy <= this.r * this.r;
-    }
-  }
-
-  hitTest(px, py, pr = 0) {
+  hitTest(px, py, pr) {
     if (this.destroyed) return null;
     if (this.shape === 'rect') {
       const cx = Math.max(this.x, Math.min(px, this.x + this.w));
       const cy = Math.max(this.y, Math.min(py, this.y + this.h));
-      const dx = px - cx;
-      const dy = py - cy;
-      const d = Math.hypot(dx, dy);
-      if (d <= pr + 1) return { x: cx, y: cy, dist: d, nx: dx / (d || 1), ny: dy / (d || 1) };
-      return null;
-    } else {
-      const dx = px - this.x;
-      const dy = py - this.y;
-      const d = Math.hypot(dx, dy);
-      if (d <= this.r + pr) return { x: this.x, y: this.y, dist: d, nx: dx / (d || 1), ny: dy / (d || 1) };
-      return null;
+      const dx = px - cx, dy = py - cy;
+      return Math.hypot(dx, dy) <= pr + 1 ? { nx: dx, ny: dy } : null;
     }
+    if (this.shape === 'circle') {
+      const r = Math.max(this.w, this.h) / 2;
+      const cx = this.x + this.w / 2, cy = this.y + this.h / 2;
+      const dx = px - cx, dy = py - cy;
+      return Math.hypot(dx, dy) <= r + pr ? { nx: dx, ny: dy } : null;
+    }
+    return null;
   }
 
   takeDamage(dmg) {
-    if (this.destroyed || !this.destructible) return false;
     this.hp -= dmg;
     if (this.hp <= 0) {
       this.destroyed = true;
@@ -79,189 +47,145 @@ export class TerrainObject {
     return false;
   }
 
-  addDecal(x, y, r, type = 'crater') {
-    this.decals.push({ x, y, r, seed: Math.random() * 9999, type });
-    if (this.decals.length > CONFIG.MAX_DECALS) {
-      this.decals.shift();
-    }
+  addDecal(x, y, r, type) {
+    if (this.decals.length < 8) this.decals.push({ x, y, r, type });
   }
 }
 
-// ========== 平台分段系统 ==========
-// 每个平台由多个 40px 分段组成，和地面一样逐段破坏
+// ---------- 材质 ----------
+export const MATERIALS = {
+  wall:     { color: '#4A3F35', hp: 99999, destructible: false },
+  wood:     { color: '#8B7355', hp: 200,   destructible: true },
+  podium:   { color: '#6D4C41', hp: 300,   destructible: true },
+  paper:    { color: '#FFF8E1', hp: 80,    destructible: true },
+  sauce:    { color: '#FF6B6B', hp: 50,    destructible: true },
+  chalk:    { color: '#FFFDE7', hp: 60,    destructible: true },
+  ground:   { color: '#6D4C41', hp: 99999, destructible: false },
+};
 
-const PLATFORM_SEG_W = 40;
-
-// 创建一个分段平台，返回 { segments: [...], y, h }
-// segments[i] = { x, w, destroyed: false }
-export function createPlatform(x, y, w, h = 20) {
-  const segCount = Math.ceil(w / PLATFORM_SEG_W);
-  const segments = [];
-  for (let i = 0; i < segCount; i++) {
-    segments.push({
-      x: x + i * PLATFORM_SEG_W,
-      w: Math.min(PLATFORM_SEG_W, x + w - (x + i * PLATFORM_SEG_W)),
-      y, h,
-      destroyed: false,
-      craterDepth: 0, // 半球形坑深（向下凹陷）
-    });
-  }
-  return { segments, y, h };
+// ---------- 悬空平台（高度图制：点拼成，圆形弹坑）----------
+export function createPlatform(x, y, w, h) {
+  const heightmap = new Float32Array(w);
+  heightmap.fill(y); // 初始表面 Y = 平台顶部
+  return { x, y, w, h, width: w, heightmap };
 }
 
-// 检查弹丸与所有平台分段的碰撞
-// platforms: array of createPlatform() results
-// 返回 { platform, seg, segIdx } 或 null
+// 检测弹丸与平台碰撞（高度图制）
 export function checkPlatformHit(px, py, pr, platforms) {
   if (!platforms) return null;
   for (const plat of platforms) {
-    for (let i = 0; i < plat.segments.length; i++) {
-      const seg = plat.segments[i];
-      if (seg.destroyed) {
-        // 坑内：弹丸在坑底以上穿过，到坑底碰撞
-        const craterBottom = seg.y + (seg.craterDepth || 0);
-        if (py >= craterBottom - pr && py <= craterBottom + seg.h) {
-          return { platform: plat, seg, segIdx: i, point: { x: px, y: craterBottom } };
-        }
-        continue; // 在坑内空间，穿过
-      }
-      // rect hit test
-      const cx = Math.max(seg.x, Math.min(px, seg.x + seg.w));
-      const cy = Math.max(seg.y, Math.min(py, seg.y + seg.h));
-      const dx = px - cx;
-      const dy = py - cy;
-      const d = Math.hypot(dx, dy);
-      if (d <= pr + 1) {
-        return { platform: plat, seg, segIdx: i, point: { x: cx, y: cy } };
-      }
+    if (px < plat.x - pr || px > plat.x + plat.w + pr) continue;
+    const localX = Math.floor(px - plat.x);
+    if (localX < 0 || localX >= plat.width) continue;
+    const surfY = plat.heightmap[localX];
+    // 弹丸底部触到平台表面 → 碰撞
+    if (py + pr >= surfY && py - pr <= plat.y + plat.h) {
+      return { platform: plat, localX, point: { x: px, y: surfY } };
     }
   }
   return null;
 }
 
-// ========== 辅助 ==========
-
-function _boundaryWalls() {
-  const list = [];
-  const gy = CONFIG.GROUND_Y;
-  list.push(new TerrainObject({ shape: 'rect', x: 0, y: 0, w: 30, h: gy, material: 'wall' }));
-  list.push(new TerrainObject({ shape: 'rect', x: CONFIG.WIDTH - 30, y: 0, w: 30, h: gy, material: 'wall' }));
-  return list;
-}
-
-// 平台定义（返回 { x, y, w, h } 描述，由 battle.js 统一创建分段）
-function _platDef(x, y, w, h = 20) {
-  return { x, y, w, h };
-}
-
-// ========== 5 学科独立地图 ==========
-
-// 体育（pe）— 操场：跨栏平台 + 跑道台阶
-export function getPePlatforms() {
-  const gy = CONFIG.GROUND_Y;
-  return [
-    _platDef(200, gy - 120, 160),
-    _platDef(600, gy - 200, 120),
-    _platDef(640, gy - 340, 40, 140), // 跨栏柱
-    _platDef(1000, gy - 150, 180),
-    _platDef(1050, gy - 300, 100),
-    _platDef(1300, gy - 270, 170), // 球门横梁
-  ];
-}
-
-// 语文（chinese）— 教室：书堆平台 + 卷轴桥
-export function getChinesePlatforms() {
-  const gy = CONFIG.GROUND_Y;
-  return [
-    _platDef(250, gy - 100, 120),
-    _platDef(270, gy - 160, 80),
-    _platDef(290, gy - 220, 40),
-    _platDef(550, gy - 250, 300), // 卷轴桥
-    _platDef(1000, gy - 80, 100),
-    _platDef(1020, gy - 140, 80),
-    _platDef(1040, gy - 200, 60),
-    _platDef(1060, gy - 260, 40),
-    _platDef(1200, gy - 350, 150),
-  ];
-}
-
-// 美术（art）— 画室：调色盘平台 + 画架
-export function getArtPlatforms() {
-  const gy = CONFIG.GROUND_Y;
-  return [
-    _platDef(200, gy - 100, 100),
-    _platDef(240, gy - 200, 60),
-    _platDef(270, gy - 300, 30),
-    _platDef(550, gy - 180, 200), // 调色盘大平台
-    _platDef(850, gy - 100, 80),
-    _platDef(900, gy - 180, 80),
-    _platDef(950, gy - 260, 80),
-    _platDef(1200, gy - 320, 180),
-    _platDef(1250, gy - 220, 80),
-  ];
-}
-
-// 数学（math）— 教室：三角尺平台 + 几何阶梯
-export function getMathPlatforms() {
-  const gy = CONFIG.GROUND_Y;
-  return [
-    _platDef(200, gy - 80, 120),
-    _platDef(260, gy - 160, 80),
-    _platDef(320, gy - 240, 40),
-    _platDef(550, gy - 120, 80),
-    _platDef(660, gy - 200, 80),
-    _platDef(770, gy - 280, 80),
-    _platDef(1000, gy - 150, 100),
-    _platDef(1150, gy - 250, 100),
-    _platDef(1300, gy - 350, 120),
-  ];
-}
-
-// 英语（english）— 教室：词典塔 + 字母台阶
-export function getEnglishPlatforms() {
-  const gy = CONFIG.GROUND_Y;
-  return [
-    _platDef(200, gy - 80, 100),
-    _platDef(220, gy - 160, 80),
-    _platDef(240, gy - 240, 60),
-    _platDef(500, gy - 200, 100),
-    _platDef(650, gy - 280, 100),
-    _platDef(800, gy - 200, 100),
-    _platDef(1000, gy - 100, 80),
-    _platDef(1080, gy - 200, 80),
-    _platDef(1160, gy - 300, 80),
-    _platDef(1350, gy - 380, 120),
-  ];
-}
-
-// ========== 平台工厂注册表 ==========
-export const PLATFORM_FACTORIES = {
-  pe: getPePlatforms,
-  chinese: getChinesePlatforms,
-  art: getArtPlatforms,
-  math: getMathPlatforms,
-  english: getEnglishPlatforms,
-  // 老师 Boss 映射
-  jin: getMathPlatforms,
-  han: getChinesePlatforms,
-  wu: getEnglishPlatforms,
-  ding: getArtPlatforms,
-  huang: getPePlatforms,
-};
-
-// ========== 关卡地形工厂（仅边界墙） ==========
-// 平台现在由 battle.js 通过 PLATFORM_FACTORIES + createPlatform 管理
-
-export function createJinLevelTerrain() { return _boundaryWalls(); }
-export function createHanLevelTerrain() { return _boundaryWalls(); }
-export function createWuLevelTerrain() { return _boundaryWalls(); }
-export function createDingLevelTerrain() { return _boundaryWalls(); }
-export function createHuangLevelTerrain() { return _boundaryWalls(); }
-
+// ---------- 学科地形工厂 ----------
 export const TERRAIN_FACTORIES = {
-  jin: createJinLevelTerrain,
-  han: createHanLevelTerrain,
-  wu: createWuLevelTerrain,
-  ding: createDingLevelTerrain,
-  huang: createHuangLevelTerrain,
+  pe:      () => _peTerrain(),
+  chinese: () => _chineseTerrain(),
+  art:     () => _artTerrain(),
+  math:    () => _mathTerrain(),
+  english: () => _englishTerrain(),
+  jin:     () => _mathTerrain(),    // 数学老师 → 数学地图
+  han:     () => _chineseTerrain(), // 语文老师 → 语文地图
+  wu:      () => _englishTerrain(), // 英语老师 → 英语地图
+  ding:    () => _artTerrain(),     // 美术老师 → 美术地图
+  huang:   () => _peTerrain(),      // 体育老师 → 体育地图
+  default: () => [],
 };
+
+// ---------- 学科悬空平台工厂 ----------
+export const PLATFORM_FACTORIES = {
+  pe:      () => _pePlatforms(),
+  chinese: () => _chinesePlatforms(),
+  art:     () => _artPlatforms(),
+  math:    () => _mathPlatforms(),
+  english: () => _englishPlatforms(),
+  jin:     () => _mathPlatforms(),
+  han:     () => _chinesePlatforms(),
+  wu:      () => _englishPlatforms(),
+  ding:    () => _artPlatforms(),
+  huang:   () => _pePlatforms(),
+  default: () => [],
+};
+
+// 辅助：创建平台定义
+function _plat(x, y, w, h) { return { x, y, w, h }; }
+
+// ---------- 体育：跨栏 + 球门 + 台阶 ----------
+function _peTerrain() { return []; }
+function _pePlatforms() {
+  return [
+    _plat(280, 820, 120, 20),   // 跨栏平台1
+    _plat(480, 760, 100, 20),   // 跨栏平台2
+    _plat(680, 820, 120, 20),   // 球门横梁
+    _plat(920, 700, 140, 20),   // 看台台阶1
+    _plat(1120, 780, 120, 20),  // 看台台阶2
+    _plat(380, 640, 80, 140),   // 跨栏柱（高）
+  ];
+}
+
+// ---------- 语文：书堆 + 卷轴 + 书本塔 ----------
+function _chineseTerrain() { return []; }
+function _chinesePlatforms() {
+  return [
+    _plat(300, 840, 100, 20),   // 书堆底层
+    _plat(440, 780, 120, 20),   // 书堆中层
+    _plat(580, 720, 100, 20),   // 书堆顶层
+    _plat(800, 800, 160, 20),   // 卷轴桥
+    _plat(1050, 700, 80, 20),   // 书本塔顶
+    _plat(1050, 760, 80, 20),   // 书本塔中
+    _plat(380, 620, 100, 140),  // 书架柱
+  ];
+}
+
+// ---------- 美术：画架 + 调色盘 + 颜料管 ----------
+function _artTerrain() { return []; }
+function _artPlatforms() {
+  return [
+    _plat(320, 800, 60, 140),   // 画架左腿
+    _plat(420, 800, 60, 140),   // 画架右腿
+    _plat(370, 740, 140, 20),   // 画架横梁
+    _plat(620, 780, 180, 20),   // 调色盘大平台
+    _plat(900, 820, 120, 20),   // 颜料管斜坡1
+    _plat(1080, 740, 100, 20),  // 颜料管斜坡2
+    _plat(250, 660, 80, 140),   // 颜料瓶柱
+  ];
+}
+
+// ---------- 数学：三角尺 + 量角器 + 圆规 ----------
+function _mathTerrain() { return []; }
+function _mathPlatforms() {
+  return [
+    _plat(300, 820, 80, 20),    // 三角尺底
+    _plat(380, 740, 80, 20),    // 三角尺中
+    _plat(460, 660, 80, 20),    // 三角尺顶
+    _plat(620, 780, 200, 20),   // 量角器弧形桥
+    _plat(900, 820, 100, 20),   // 圆规左脚
+    _plat(1080, 820, 100, 20),  // 圆规右脚
+    _plat(990, 700, 100, 20),   // 圆规顶
+    _plat(250, 680, 60, 140),   // 直尺柱
+  ];
+}
+
+// ---------- 英语：词典塔 + 字母桥 + 阶梯 ----------
+function _englishTerrain() { return []; }
+function _englishPlatforms() {
+  return [
+    _plat(300, 820, 80, 20),    // 词典塔底
+    _plat(300, 760, 80, 20),    // 词典塔中
+    _plat(300, 700, 80, 20),    // 词典塔顶
+    _plat(460, 780, 180, 20),   // 字母桥
+    _plat(720, 820, 120, 20),   // 阶梯1
+    _plat(900, 760, 120, 20),   // 阶梯2
+    _plat(1080, 700, 120, 20),  // 阶梯3
+    _plat(1200, 640, 80, 20),   // 顶部小台
+  ];
+}
