@@ -1284,8 +1284,11 @@ export class BattleScene {
       const seg = this.groundSegments[Math.max(0, Math.min(this.groundSegments.length - 1, segIdx))];
       if (seg && !seg.destroyed) {
         seg.destroyed = true;
-        // 连带破坏左右各 5 段（440px 范围）
-        for (let off = -5; off <= 5; off++) {
+        // 破坏范围 = 子弹半径 × 倍数（普通5倍，橘子/AOE 10倍）
+        const mul = (proj.skillData && (proj.skillData.id === 'orange' || proj.skillData.id === 'tomato')) ? 10 : 5;
+        const destroyRadius = proj.radius * mul;
+        const segRange = Math.ceil(destroyRadius / 40);
+        for (let off = -segRange; off <= segRange; off++) {
           if (off === 0) continue;
           const s2 = this.groundSegments[segIdx + off];
           if (s2 && !s2.destroyed) {
