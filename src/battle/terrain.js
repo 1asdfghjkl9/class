@@ -14,7 +14,7 @@ export const MATERIALS = {
   ruler:  { hp: Infinity, destructible: false, color: '#FFD54F', stroke: '#F9A825' },
   ball:   { hp: Infinity, destructible: false, color: '#FF7043', stroke: '#D84315' },
   book:   { hp: 80, destructible: true, color: '#90CAF9', stroke: '#1565C0' },
-  platform: { hp: Infinity, destructible: false, color: '#8D6E63', stroke: '#5D4037' },
+  platform: { hp: 400, destructible: true, color: '#8D6E63', stroke: '#5D4037' },
 };
 
 let _idCounter = 0;
