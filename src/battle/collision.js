@@ -19,13 +19,18 @@ export function checkCollision(projectile, terrainList, units, groundSegments) {
     }
   }
 
-  // 2. 地面碰撞（检查可破坏分段）
+  // 2. 地面碰撞（半球形坑：只在坑底以上的破坏段才穿过）
   if (py >= CONFIG.GROUND_Y - pr && py < CONFIG.GROUND_Y + 5) {
     if (groundSegments) {
       const segIdx = Math.max(0, Math.min(groundSegments.length - 1, Math.floor(px / 40)));
       const seg = groundSegments[segIdx];
       if (seg && seg.destroyed) {
-        // 地面被破坏，弹丸穿过
+        // 坑内：弹丸在坑底以上 → 穿过；到坑底 → 碰撞
+        const craterBottom = CONFIG.GROUND_Y + (seg.craterDepth || 0);
+        if (py >= craterBottom - pr) {
+          return { type: 'ground', point: { x: px, y: craterBottom }, normal: { x: 0, y: -1 } };
+        }
+        // 穿过坑内空间
       } else {
         return { type: 'ground', point: { x: px, y: CONFIG.GROUND_Y }, normal: { x: 0, y: -1 } };
       }
@@ -37,8 +42,12 @@ export function checkCollision(projectile, terrainList, units, groundSegments) {
     if (groundSegments) {
       const segIdx = Math.max(0, Math.min(groundSegments.length - 1, Math.floor(px / 40)));
       const seg = groundSegments[segIdx];
-      if (seg && seg.destroyed && py < CONFIG.GROUND_Y + CONFIG.GROUND_DEPTH) {
-        // 在被破坏的地面区域内，让弹丸继续穿过
+      if (seg && seg.destroyed) {
+        const craterBottom = CONFIG.GROUND_Y + (seg.craterDepth || 0);
+        if (py >= craterBottom - pr) {
+          return { type: 'ground', point: { x: px, y: craterBottom }, normal: { x: 0, y: -1 } };
+        }
+        // 在坑内空间，穿过
       } else {
         return { type: 'ground', point: { x: px, y: CONFIG.GROUND_Y }, normal: { x: 0, y: -1 } };
       }
