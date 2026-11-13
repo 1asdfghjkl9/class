@@ -103,6 +103,7 @@ export function createPlatform(x, y, w, h = 20) {
       w: Math.min(PLATFORM_SEG_W, x + w - (x + i * PLATFORM_SEG_W)),
       y, h,
       destroyed: false,
+      craterDepth: 0, // 半球形坑深（向下凹陷）
     });
   }
   return { segments, y, h };
@@ -116,7 +117,14 @@ export function checkPlatformHit(px, py, pr, platforms) {
   for (const plat of platforms) {
     for (let i = 0; i < plat.segments.length; i++) {
       const seg = plat.segments[i];
-      if (seg.destroyed) continue;
+      if (seg.destroyed) {
+        // 坑内：弹丸在坑底以上穿过，到坑底碰撞
+        const craterBottom = seg.y + (seg.craterDepth || 0);
+        if (py >= craterBottom - pr && py <= craterBottom + seg.h) {
+          return { platform: plat, seg, segIdx: i, point: { x: px, y: craterBottom } };
+        }
+        continue; // 在坑内空间，穿过
+      }
       // rect hit test
       const cx = Math.max(seg.x, Math.min(px, seg.x + seg.w));
       const cy = Math.max(seg.y, Math.min(py, seg.y + seg.h));
