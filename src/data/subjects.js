@@ -35,7 +35,7 @@ export const SUBJECTS = {
     mapTheme: 'pe',
     stages: [
       student({
-        id: 'pe_1', name: '马铭喆', title: '体育委员', nickname: '短跑王',
+        id: 'pe_1', name: '马铭喆',
         hp: 130, color: '#FFCC80', shotBaseDamage: 11,
         shotType: 'lob', skillPref: 'high',
         quote: '跑起来！别磨蹭！',
@@ -44,7 +44,7 @@ export const SUBJECTS = {
         reward: { coins: 60, exp: 20 },
       }),
       student({
-        id: 'pe_2', name: '武睿晞', title: '体育课尖子', nickname: '跳远王',
+        id: 'pe_2', name: '武睿晞',
         hp: 150, color: '#FFA726', shotBaseDamage: 12,
         shotType: 'lob', skillPref: 'annoying',
         quote: '看我跳过去！',
@@ -53,7 +53,7 @@ export const SUBJECTS = {
         reward: { coins: 70, exp: 25 },
       }),
       student({
-        id: 'pe_3', name: '张书格', title: '铅球手', nickname: '铁球',
+        id: 'pe_3', name: '张书格',
         hp: 170, color: '#EF6C00', shotBaseDamage: 13,
         shotType: 'flat', skillPref: 'high',
         quote: '看我推过去！',
@@ -62,7 +62,7 @@ export const SUBJECTS = {
         reward: { coins: 85, exp: 30 },
       }),
       student({
-        id: 'pe_4', name: '谭梓峻', title: '长跑选手', nickname: '耐力王',
+        id: 'pe_4', name: '谭梓峻',
         hp: 185, color: '#E65100', shotBaseDamage: 13,
         shotType: 'lob', skillPref: 'high',
         quote: '十圈只是热身。',
@@ -71,7 +71,7 @@ export const SUBJECTS = {
         reward: { coins: 95, exp: 35 },
       }),
       student({
-        id: 'pe_rep', name: '封佳琪', title: '体育课代表', nickname: '魔鬼教练',
+        id: 'pe_rep', name: '封佳琪',
         hp: 310, color: '#BF360C', shotBaseDamage: 16, radius: 34,
         shotType: 'flat', skillPref: 'scatter',
         quote: '给我跑十圈！跑不完别想下课！',
@@ -95,7 +95,7 @@ export const SUBJECTS = {
     mapTheme: 'chinese',
     stages: [
       student({
-        id: 'chinese_1', name: '盛丽文', title: '背诵狂魔', nickname: '复读机',
+        id: 'chinese_1', name: '盛丽文',
         hp: 130, color: '#EF9A9A', shotBaseDamage: 10,
         shotType: 'flat', skillPref: 'high',
         quote: '再背一遍，从头开始。',
@@ -104,7 +104,7 @@ export const SUBJECTS = {
         reward: { coins: 60, exp: 20 },
       }),
       student({
-        id: 'chinese_2', name: '叶辰希', title: '作文天才', nickname: '八百字',
+        id: 'chinese_2', name: '叶辰希',
         hp: 155, color: '#E57373', shotBaseDamage: 11,
         shotType: 'lob', skillPref: 'connon',
         quote: '字数不够，重写。',
@@ -113,7 +113,7 @@ export const SUBJECTS = {
         reward: { coins: 75, exp: 25 },
       }),
       student({
-        id: 'chinese_rep', name: '徐紫菡', title: '语文课代表', nickname: '默写本',
+        id: 'chinese_rep', name: '徐紫菡',
         hp: 280, color: '#B71C1C', shotBaseDamage: 14, radius: 34,
         shotType: 'flat', skillPref: 'high',
         quote: '全对，下一个。',
@@ -126,7 +126,7 @@ export const SUBJECTS = {
         reward: { coins: 200, exp: 80 },
       }),
       student({
-        id: 'chinese_3', name: '封佳琪', title: '语文课尖子', nickname: '朗读王',
+        id: 'chinese_3', name: '封佳琪',
         hp: 250, color: '#C62828', shotBaseDamage: 13,
         shotType: 'flat', skillPref: 'scatter',
         quote: '有感情地朗读课文！',
@@ -146,7 +146,7 @@ export const SUBJECTS = {
     mapTheme: 'art',
     stages: [
       student({
-        id: 'art_1', name: '武睿晞', title: '美术课尖子', nickname: '调色盘',
+        id: 'art_1', name: '武睿晞',
         hp: 140, color: '#B39DDB', shotBaseDamage: 10,
         shotType: 'flat', skillPref: 'connon',
         quote: '先打个稿。',
@@ -155,7 +155,7 @@ export const SUBJECTS = {
         reward: { coins: 65, exp: 22 },
       }),
       student({
-        id: 'art_2', name: '张书格', title: '水彩手', nickname: '渐变',
+        id: 'art_2', name: '张书格',
         hp: 160, color: '#AB47BC', shotBaseDamage: 11,
         shotType: 'flat', skillPref: 'connon',
         quote: '色调不对，重来。',
@@ -164,7 +164,7 @@ export const SUBJECTS = {
         reward: { coins: 75, exp: 26 },
       }),
       student({
-        id: 'art_3', name: '李为先', title: '美术课代表', nickname: '画魂',
+        id: 'art_3', name: '李为先',
         hp: 300, color: '#4A148C', shotBaseDamage: 15, radius: 34,
         shotType: 'lob', skillPref: 'connon',
         quote: '我画什么，什么就是真的。',
@@ -178,7 +178,7 @@ export const SUBJECTS = {
       }),
       // 朱婉宁·残影：低数值，受到致命伤判定通关 → 跳到真身
       student({
-        id: 'art_4', name: '朱婉宁·残影', title: '转走的课代表', nickname: '残影',
+        id: 'art_4', name: '朱婉宁·残影',
         hp: 120, color: '#7B1FA2', shotBaseDamage: 10, radius: 30,
         shotType: 'lob', skillPref: 'annoying',
         quote: '……我已经转走了。',
@@ -189,7 +189,7 @@ export const SUBJECTS = {
       }),
       // 朱婉宁·真身：高数值，彻底击败才算通关
       student({
-        id: 'art_5', name: '朱婉宁·真身', title: '原美术课代表', nickname: '真身',
+        id: 'art_5', name: '朱婉宁·真身',
         hp: 360, color: '#311B92', shotBaseDamage: 17, radius: 36,
         shotType: 'flat', skillPref: 'high',
         quote: '我回来了。这次，不会输。',
@@ -213,7 +213,7 @@ export const SUBJECTS = {
     mapTheme: 'math',
     stages: [
       student({
-        id: 'math_1', name: '张书格', title: '几何杀手', nickname: '圆规',
+        id: 'math_1', name: '张书格',
         hp: 135, color: '#90CAF9', shotBaseDamage: 10,
         shotType: 'flat', skillPref: 'annoying',
         quote: '辅助线连一下。',
@@ -223,7 +223,7 @@ export const SUBJECTS = {
       }),
       // 双课代表合并关：徐子森 + 李清逸
       student({
-        id: 'math_2', name: '徐子森 + 李清逸', title: '双数学课代表', nickname: '双子星',
+        id: 'math_2', name: '徐子森 + 李清逸',
         hp: 200, color: '#1976D2', shotBaseDamage: 12, radius: 32,
         shotType: 'flat', skillPref: 'connon',
         quote: '这题有两种解法。',
@@ -242,7 +242,7 @@ export const SUBJECTS = {
         reward: { coins: 200, exp: 80 },
       }),
       student({
-        id: 'math_3', name: '李为先', title: '函数狂人', nickname: '导数',
+        id: 'math_3', name: '李为先',
         hp: 175, color: '#1565C0', shotBaseDamage: 13,
         shotType: 'lob', skillPref: 'connon',
         quote: '求个导就行。',
@@ -251,7 +251,7 @@ export const SUBJECTS = {
         reward: { coins: 95, exp: 35 },
       }),
       student({
-        id: 'math_4', name: '吴谦祥', title: '数学高手', nickname: '满分',
+        id: 'math_4', name: '吴谦祥',
         hp: 220, color: '#0D47A1', shotBaseDamage: 14,
         shotType: 'flat', skillPref: 'scatter',
         quote: '这题太简单了。',
@@ -271,7 +271,7 @@ export const SUBJECTS = {
     mapTheme: 'english',
     stages: [
       student({
-        id: 'english_1', name: '吴谦祥', title: '英语高手', nickname: '词典',
+        id: 'english_1', name: '吴谦祥',
         hp: 140, color: '#A5D6A7', shotBaseDamage: 10,
         shotType: 'flat', skillPref: 'annoying',
         quote: '这个单词你会吗？',
@@ -280,7 +280,7 @@ export const SUBJECTS = {
         reward: { coins: 65, exp: 22 },
       }),
       student({
-        id: 'english_2', name: '封佳琪', title: '英语课尖子', nickname: '朗读王',
+        id: 'english_2', name: '封佳琪',
         hp: 160, color: '#4CAF50', shotBaseDamage: 11,
         shotType: 'flat', skillPref: 'scatter',
         quote: 'Read after me.',
@@ -289,7 +289,7 @@ export const SUBJECTS = {
         reward: { coins: 75, exp: 26 },
       }),
       student({
-        id: 'english_3', name: '李为先', title: '语法警察', nickname: '时态',
+        id: 'english_3', name: '李为先',
         hp: 180, color: '#2E7D32', shotBaseDamage: 12,
         shotType: 'lob', skillPref: 'connon',
         quote: '时态错了，重说。',
@@ -299,7 +299,7 @@ export const SUBJECTS = {
       }),
       // 双课代表合并关（收尾）：叶辰希 + 陈玥菱
       student({
-        id: 'english_rep', name: '叶辰希 + 陈玥菱', title: '双英语课代表', nickname: '双子星',
+        id: 'english_rep', name: '叶辰希 + 陈玥菱',
         hp: 220, color: '#1B5E20', shotBaseDamage: 13, radius: 32,
         shotType: 'lob', skillPref: 'connon',
         quote: 'We answer together.',
