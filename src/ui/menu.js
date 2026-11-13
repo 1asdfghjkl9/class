@@ -302,12 +302,6 @@ export class MenuScene {
 
   // ---------- 战斗入口 ----------
   _startBoss(bossId) {
-    const story = getStory(bossId);
-    if (story && story.intro) {
-      this.story = { lines: story.intro, index: 0, target: bossId, opts: {} };
-      this.page = 'story';
-      return;
-    }
     this._launch(bossId, {});
   }
 
@@ -322,12 +316,6 @@ export class MenuScene {
   }
 
   _startStage(stageId) {
-    const q = getStageQuote(stageId);
-    if (q && q.intro) {
-      this.story = { lines: [{ who: '对手', text: q.intro }], index: 0, target: stageId, opts: {} };
-      this.page = 'story';
-      return;
-    }
     this._launch(stageId, {});
   }
 
