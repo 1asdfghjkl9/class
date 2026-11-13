@@ -6,8 +6,8 @@ import { CONFIG } from '../config.js';
 import { GameLoop } from '../core/loop.js';
 import { Input } from '../core/input.js';
 import { AudioSystem } from '../core/audio.js';
-import { SKILLS, skillDamage } from '../data/skills.js';
-import { ITEMS, itemEffectMul } from '../data/items.js';
+import { SKILLS, skillDamage, skillEffect } from '../data/skills.js';
+import { ITEMS, itemEffectMul, rollEnemyItem } from '../data/items.js';
 import { WEAPONS, weaponDamage, sumAffixes } from '../data/weapons.js';
 import { BOSSES, MINION, STUDENT_ENEMIES } from '../data/bosses.js';
 import { getStage } from '../data/subjects.js';
@@ -1057,13 +1057,15 @@ export class BattleScene {
 
   _fireSkill(skill, angle, speed) {
     const lv = this.player.skillLevels[skill.id] || 1;
-    const dmg = Math.round(skillDamage(skill, lv) * (1 + (this.talent.skillDmgPct || 0) / 100));
+    // ★ 使用 skillEffect 获取随等级提升的实际参数
+    const eff = skillEffect(skill, lv);
+    const dmg = Math.round(eff.damage * (1 + (this.talent.skillDmgPct || 0) / 100));
     const color = skill.color || '#FF6B6B';
     const opts = {
       effect: skill.effect || null,
-      effectTurns: skill.effectTurns || 0,
-      effectValue: skill.effectValue || 0,
-      aoeRadius: skill.aoeRadius || 0,
+      effectTurns: eff.effectTurns,
+      effectValue: eff.effectValue,
+      aoeRadius: eff.aoeRadius,
       isTracking: skill.type === 'tracking',
       ignoreWind: !!skill.ignoreWind,
       noSuperCrit: !!skill.noSuperCrit,
@@ -1078,7 +1080,7 @@ export class BattleScene {
       if (!this.modState.healAllowed) {
         this._floatText('本关禁止治疗', '#9E9E9E');
       } else {
-        const heal = Math.round(this.player.maxHp * (skill.healRatio || 0.25));
+        const heal = Math.round(this.player.maxHp * eff.healRatio);
         this.player.hp = Math.min(this.player.maxHp, this.player.hp + heal);
         this._floatText('+' + heal, '#8BC34A', this.player.x, this.player.y - 70, 26);
       }
@@ -1097,16 +1099,16 @@ export class BattleScene {
         this._spawnProjectile(this.player, angle, speed, dmg, color, null, skill, opts);
       }
     } else if (skill.type === 'multi') {
-      const count = skill.count || 3;
+      const count = eff.count;
       for (let i = 0; i < count; i++) {
         this.pendingShots.push({
           unit: this.player, angle, speed, dmg, color,
-          delay: i * (skill.interval || 0.15),
+          delay: i * (eff.interval || 0.15),
           skillData: skill, opts: { ...opts },
         });
       }
     } else if (skill.type === 'scatter') {
-      const count = skill.count || 5;
+      const count = eff.count;
       const spread = (skill.spread || 25) * Math.PI / 180;
       for (let i = 0; i < count; i++) {
         const t = count > 1 ? i / (count - 1) - 0.5 : 0;
@@ -1993,6 +1995,49 @@ export class BattleScene {
         }
         if (this.bossActionTimer > 1.5) this._endBossAction();
         break;
+
+      case 'enemy_item': {
+        // ★ 怪物使用道具
+        const unit = this.activeBoss || this.boss;
+        const itemId = action.itemId;
+        const item = ITEMS[itemId];
+        if (item && this.bossActionTimer > 0.8) {
+          this._applyEnemyItem(unit, item);
+          this.bossActionPhase = 1;
+        }
+        if (this.bossActionTimer > 1.5) this._endBossAction();
+        break;
+      }
+
+      case 'enemy_stealth': {
+        // ★ 盛丽文隐身
+        const unit = this.activeBoss || this.boss;
+        if (this.bossActionPhase === 0 && this.bossActionTimer > 0.5) {
+          this.status.add(unit, 'stealth', 2, 0.4);
+          this._floatText('隐身!', '#4ECDC4', unit.x, unit.y - unit.radius - 40, 24);
+          // 虚化粒子
+          this.particles.push(...createHitParticles(unit.x, unit.y - unit.radius, '#4ECDC4', 20, 1.5));
+          this.audio.play('button');
+          this.bossActionPhase = 1;
+        }
+        if (this.bossActionTimer > 1.5) this._endBossAction();
+        break;
+      }
+
+      case 'heal_ally': {
+        // ★ 治疗队友（双课代表关）
+        const ally = this.bossTwin && !this.bossTwin.dead ? this.bossTwin : null;
+        if (ally && this.bossActionPhase === 0 && this.bossActionTimer > 0.5) {
+          const heal = Math.round(ally.maxHp * 0.25);
+          ally.hp = Math.min(ally.maxHp, ally.hp + heal);
+          this._floatText('+' + heal, '#8BC34A', ally.x, ally.y - ally.radius - 30, 22);
+          this.particles.push(...createHitParticles(ally.x, ally.y - ally.radius, '#8BC34A', 16, 1.2));
+          this.audio.play('hit');
+          this.bossActionPhase = 1;
+        }
+        if (this.bossActionTimer > 1.5) this._endBossAction();
+        break;
+      }
     }
   }
 
@@ -2016,6 +2061,48 @@ export class BattleScene {
     this.activeBoss = null;
     // 回合制轮换：Boss 行动完毕 → 切换到玩家回合
     this._switchToPlayer();
+  }
+
+  // ===== 怪物使用道具 =====
+  _applyEnemyItem(unit, item) {
+    const lv = 1; // 怪物道具默认1级
+    switch (item.id) {
+      case 'teacher_snack':
+      case 'snack': {
+        const heal = Math.round(unit.maxHp * 0.3);
+        unit.hp = Math.min(unit.maxHp, unit.hp + heal);
+        this._floatText('+' + heal, '#8BC34A', unit.x, unit.y - unit.radius - 30, 22);
+        this.particles.push(...createHitParticles(unit.x, unit.y - unit.radius, '#8BC34A', 12, 1));
+        break;
+      }
+      case 'not_our_class': {
+        this.status.add(unit, 'shield', 2, 0.4);
+        this._floatText('护盾!', '#4169E1', unit.x, unit.y - unit.radius - 40, 22);
+        break;
+      }
+      case 'what_doing': {
+        unit.buffMul = (unit.buffMul || 1) * 1.5;
+        this.status.add(unit, 'buff_dmg', 3, 0.5);
+        this._floatText('攻击提升!', '#FF5722', unit.x, unit.y - unit.radius - 40, 22);
+        break;
+      }
+      case 'leave': {
+        this.status.add(unit, 'stealth', 2, 0.4);
+        this._floatText('隐身!', '#4ECDC4', unit.x, unit.y - unit.radius - 40, 22);
+        this.particles.push(...createHitParticles(unit.x, unit.y - unit.radius, '#4ECDC4', 16, 1.2));
+        break;
+      }
+      case 'kite': {
+        // 随机位移
+        const dir = Math.random() < 0.5 ? -1 : 1;
+        unit.x = Math.max(200, Math.min(CONFIG.WIDTH - 200, unit.x + dir * 200));
+        if (unit.homeX) unit.homeX = unit.x;
+        this._floatText('闪!', '#FFD54F', unit.x, unit.y - unit.radius - 40, 22);
+        break;
+      }
+      default:
+        break;
+    }
   }
 
   // ===== 金老师机制 =====
@@ -3192,7 +3279,13 @@ export class BattleScene {
       ctx.setLineDash([]);
     }
     if (this.status.has(p, 'stealth')) {
-      ctx.globalAlpha = 0.6;
+      // ★ 隐身虚化特效：脉动半透明 + 残影
+      const stealthVal = this.status.getValue(p, 'stealth') || 0.5;
+      const pulse = 0.35 + Math.sin(this.time * 4) * 0.12;
+      ctx.globalAlpha = pulse;
+      // 残影效果
+      ctx.shadowColor = '#4ECDC4';
+      ctx.shadowBlur = 15;
     }
     if (this.status.has(p, 'named')) {
       ctx.fillStyle = '#FF3333';
@@ -3234,6 +3327,15 @@ export class BattleScene {
     const x = b.x;
     const y = b.y;
     const r = b.radius;
+
+    // ★ 隐身虚化特效
+    const bossStealthed = this.status && this.status.has(b, 'stealth');
+    if (bossStealthed) {
+      const pulse = 0.3 + Math.sin(this.time * 4) * 0.1;
+      ctx.globalAlpha = pulse;
+      ctx.shadowColor = '#4ECDC4';
+      ctx.shadowBlur = 15;
+    }
 
     // 掉落状态：旋转 + 渐隐
     if (b.falling) {
@@ -3307,9 +3409,10 @@ export class BattleScene {
     }
 
     if (b.falling) ctx.restore();
+    // ★ 重置隐身特效
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
   }
-
-  // 金老师特征：眼镜 + 严肃表情
   _drawJinFeatures(ctx, x, y, r, b) {
     // 眼镜
     ctx.strokeStyle = '#333';
@@ -3701,9 +3804,17 @@ export class BattleScene {
   // ===== 弹丸渲染 =====
   _renderProjectiles(ctx) {
     for (const proj of this.projectiles) {
+      // ★ 隐身对手的炮弹仅在玩家附近显示
+      const sourceStealthed = proj._sourceUnit && this.status && this.status.has(proj._sourceUnit, 'stealth');
+      if (sourceStealthed) {
+        const distToPlayer = Math.hypot(proj.x - this.player.x, proj.y - this.player.y);
+        if (distToPlayer > 280) continue; // 玩家280px外不渲染
+        // 近距离时半透明渲染
+        ctx.globalAlpha = 0.5;
+      }
       // 轨迹
       if (proj.trail.length > 1) {
-        ctx.globalAlpha = 0.3;
+        ctx.globalAlpha = (sourceStealthed ? 0.15 : 0.3);
         ctx.strokeStyle = proj.color;
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -3713,7 +3824,7 @@ export class BattleScene {
           else ctx.lineTo(t.x, t.y);
         }
         ctx.stroke();
-        ctx.globalAlpha = 1;
+        ctx.globalAlpha = sourceStealthed ? 0.5 : 1;
       }
       // 弹丸
       ctx.fillStyle = proj.color;
@@ -3725,6 +3836,7 @@ export class BattleScene {
       ctx.beginPath();
       ctx.arc(proj.x - 2, proj.y - 2, proj.radius * 0.4, 0, Math.PI * 2);
       ctx.fill();
+      ctx.globalAlpha = 1;
     }
   }
 
