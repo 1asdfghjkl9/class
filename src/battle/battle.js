@@ -1991,7 +1991,7 @@ export class BattleScene {
           const baseAngle = Math.atan2(baseParams.vy, baseParams.vx);
           const speed = Math.hypot(baseParams.vx, baseParams.vy);
           for (let k = -2; k <= 2; k++) {
-            const angle = baseAngle + k * 0.18;
+            const angle = baseAngle + k * 0.10;
             const dmg = Math.round((unit.shotBaseDamage || 14) * 0.6 * (unit.buffMul || 1));
             this.pendingShots.push({ unit, angle, speed, dmg, color: unit.color || '#AB47BC', delay: Math.abs(k) * 0.08 });
           }
