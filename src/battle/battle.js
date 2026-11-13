@@ -402,16 +402,6 @@ export class BattleScene {
       if (this.bossQuoteTimer <= 0) this.bossQuote = null;
     }
 
-    // Boss 入场
-    if (this.bossIntroTimer > 0) {
-      this.bossIntroTimer -= dt;
-      if (this.bossIntroTimer <= 0) {
-        // 入场结束 → 玩家先手
-        this._switchToPlayer();
-      }
-      return;
-    }
-
     // 粒子更新
     this.particles = this.particles.filter(p => {
       p.x += p.vx * dt;
@@ -499,8 +489,8 @@ export class BattleScene {
     this.ai.updatePosition(dt);
     if (this.aiTwin) this.aiTwin.updatePosition(dt);
 
-    // 回合制轮换：玩家先手 → 敌方 → 玩家 → ...
-    // 由 _switchToPlayer / _switchToBoss 显式切换，WAITING 状态只做待机
+    // 无开场动画，直接进入玩家回合
+    this._switchToPlayer();
   }
 
   // 回合制：切换到玩家回合
@@ -2530,9 +2520,6 @@ export class BattleScene {
     // 纪律检查 UI
     if (this.state === BS.DISCIPLINE) this._renderDisciplineUI(ctx);
 
-    // Boss 入场
-    if (this.bossIntroTimer > 0) this._renderBossIntro(ctx);
-
     // 低血量警告
     if (this.player.hp / this.player.maxHp < 0.25 && this.state !== BS.ENDED) {
       this._renderLowHpWarning(ctx);
@@ -4009,8 +3996,6 @@ export class BattleScene {
     this._drawAPBar(ctx, 20, 48, 200, 16, this.player.ap / this.player.apMax);
     // 怒气条
     this._drawBar(ctx, 20, 70, 200, 12, this.player.rage / CONFIG.RAGE_MAX, CONFIG.COLORS.rageBar, '#333', 'RAGE');
-    // 行动条（ATB）
-    this._drawATB(ctx, 20, 90, 200, 12, this.player.atb / CONFIG.ATB_MAX, '#4ECDC4', '行动条');
 
     // 难度 / 挑战条件标签
     const dName = (CONFIG.DIFFICULTIES[this.difficultyId] || {}).name || '';
@@ -4055,7 +4040,6 @@ export class BattleScene {
       ctx.fillText(`${u.name || 'Boss'}${u.title ? ' · ' + u.title : ''}${u.dead ? '（已倒下）' : ''}`, bx + bw / 2, by + 12);
       ctx.textAlign = 'left';
       this._drawBar(ctx, bx, by + 16, bw, 12, Math.max(0, u.hp) / u.maxHp, CONFIG.COLORS.hpRed, '#333');
-      this._drawATB(ctx, bx, by + 33, bw, 6, u.atb / CONFIG.ATB_MAX, '#FF6B6B', '');
       bx += bw + bgap;
     }
 
