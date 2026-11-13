@@ -166,8 +166,9 @@ export class BattleScene {
     }
     this.bossList = this.bossTwin ? [this.boss, this.bossTwin] : [this.boss];
 
-    // --- 地形 ---
-    const factory = TERRAIN_FACTORIES[this.bossId] || TERRAIN_FACTORIES.jin || (() => []);
+    // --- 地形（按学科选择地图）---
+    const terrainKey = this.isStage ? (this.stageCfg.subject || 'pe') : this.bossId;
+    const factory = TERRAIN_FACTORIES[terrainKey] || TERRAIN_FACTORIES.pe || (() => []);
     this.terrain = factory();
 
     // --- 可破坏地面分段（直接破坏：□→凹）---
@@ -1279,22 +1280,11 @@ export class BattleScene {
       }
       this._addShake(3, 0.1);
     } else if (hit.type === 'ground') {
-      // 直接破坏地面（□→凹）：命中即破坏，无HP
+      // 直接破坏地面（□→凹）：只在命中点打出一个坑，不扩散
       const segIdx = Math.floor(proj.x / 40);
       const seg = this.groundSegments[Math.max(0, Math.min(this.groundSegments.length - 1, segIdx))];
       if (seg && !seg.destroyed) {
         seg.destroyed = true;
-        // 破坏范围 = 子弹半径 × 倍数（普通5倍，橘子/AOE 10倍）
-        const mul = (proj.skillData && (proj.skillData.id === 'orange' || proj.skillData.id === 'tomato')) ? 10 : 5;
-        const destroyRadius = proj.radius * mul;
-        const segRange = Math.ceil(destroyRadius / 40);
-        for (let off = -segRange; off <= segRange; off++) {
-          if (off === 0) continue;
-          const s2 = this.groundSegments[segIdx + off];
-          if (s2 && !s2.destroyed) {
-            s2.destroyed = true;
-          }
-        }
         this.audio.play('destroy');
         this.particles.push(...createHitParticles(proj.x, CONFIG.GROUND_Y, CONFIG.COLORS.groundDark || '#6B5B3F', 28, 2.5));
         this._addShake(10, 0.3);
@@ -2699,18 +2689,20 @@ export class BattleScene {
     // ===== 学科特色背景装饰（夸张化）=====
     this._renderSubjectDecor(ctx, gy);
 
-    // 地面渲染（直接破坏：□→凹，无HP）
+    // 地面渲染（直接破坏：□→凹，增加厚度）
+    const groundThickness = CONFIG.HEIGHT - gy;
     for (const seg of this.groundSegments) {
       if (seg.destroyed) continue;
-      // 地面顶部草皮/瓷砖线
+      // 地面顶部草皮/瓷砖线（更厚）
       ctx.fillStyle = '#5D4037';
-      ctx.fillRect(seg.x, gy, seg.w, 4);
-      // 基础地面色
+      ctx.fillRect(seg.x, gy, seg.w, 6);
+      // 基础地面色（渐变，更厚）
       const groundGrad = ctx.createLinearGradient(0, gy, 0, CONFIG.HEIGHT);
       groundGrad.addColorStop(0, '#6D4C41');
-      groundGrad.addColorStop(1, '#4E342E');
+      groundGrad.addColorStop(0.3, '#5D4037');
+      groundGrad.addColorStop(1, '#3E2723');
       ctx.fillStyle = groundGrad;
-      ctx.fillRect(seg.x, gy + 4, seg.w, CONFIG.HEIGHT - gy - 4);
+      ctx.fillRect(seg.x, gy + 6, seg.w, groundThickness - 6);
     }
     // 破坏段边缘锯齿
     ctx.fillStyle = '#3E2723';
@@ -2748,11 +2740,13 @@ export class BattleScene {
 
   // 学科特色背景装饰（夸张化）
   _renderSubjectDecor(ctx, gy) {
-    const bid = this.bossId;
+    // 统一映射到学科 key（pe/chinese/art/math/english）
+    const subjectMap = { jin: 'math', han: 'chinese', wu: 'english', ding: 'art', huang: 'pe' };
+    const bid = this.isStage ? (this.stageCfg.subject || 'pe') : (subjectMap[this.bossId] || this.bossId);
     ctx.save();
     ctx.globalAlpha = 0.3;
 
-    if (bid === 'jin') {
+    if (bid === 'math') {
       // 数学：巨型三角尺、量角器漂浮在背景
       ctx.strokeStyle = '#FFD54F';
       ctx.lineWidth = 4;
@@ -2787,7 +2781,7 @@ export class BattleScene {
       ctx.fillText('π', 800, gy - 400);
       ctx.fillText('√', 1000, gy - 500);
       ctx.fillText('∞', 600, gy - 600);
-    } else if (bid === 'han') {
+    } else if (bid === 'chinese') {
       // 语文：巨型毛笔、古诗卷轴
       ctx.strokeStyle = '#8D6E63';
       ctx.lineWidth = 6;
@@ -2813,7 +2807,7 @@ export class BattleScene {
         ctx.lineTo(920 + i * 45, gy - 340);
         ctx.stroke();
       }
-    } else if (bid === 'wu') {
+    } else if (bid === 'english') {
       // 英语：巨型字母、词典堆
       ctx.fillStyle = 'rgba(100,181,249,0.15)';
       ctx.font = 'bold 120px sans-serif';
@@ -2829,7 +2823,7 @@ export class BattleScene {
         ctx.fillRect(1100 + i * 5, gy - 200 - i * 30, 150, 30);
         ctx.strokeRect(1100 + i * 5, gy - 200 - i * 30, 150, 30);
       }
-    } else if (bid === 'ding') {
+    } else if (bid === 'art') {
       // 美术：巨型调色盘、画笔、颜料溅射
       ctx.strokeStyle = '#E91E63';
       ctx.lineWidth = 4;
@@ -2863,7 +2857,7 @@ export class BattleScene {
         ctx.arc(500 + Math.random() * 600, gy - 500 + Math.random() * 200, 20 + Math.random() * 30, 0, Math.PI * 2);
         ctx.fill();
       }
-    } else if (bid === 'huang') {
+    } else if (bid === 'pe') {
       // 体育：跨栏、球门、跑道
       ctx.strokeStyle = '#FF5722';
       ctx.lineWidth = 4;
@@ -2936,6 +2930,14 @@ export class BattleScene {
         ctx.strokeStyle = mat.stroke;
         ctx.lineWidth = 2;
         ctx.strokeRect(t.x, t.y, t.w, t.h);
+
+        // 平台材质：顶部高亮 + 底部阴影
+        if (t.material === 'platform') {
+          ctx.fillStyle = 'rgba(255,255,255,0.15)';
+          ctx.fillRect(t.x, t.y, t.w, 4);
+          ctx.fillStyle = 'rgba(0,0,0,0.2)';
+          ctx.fillRect(t.x, t.y + t.h - 4, t.w, 4);
+        }
 
         // 木纹纹理（wood 材质）
         if (t.material === 'wood') {
