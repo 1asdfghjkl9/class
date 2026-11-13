@@ -15,7 +15,7 @@ import { MODIFIERS } from '../data/challenges.js';
 import { getRandomQuestion } from '../data/questions.js';
 import { aggregateTalents } from '../data/talents.js';
 import { getStory, getStageQuote } from '../data/stories.js';
-import { TerrainObject, TERRAIN_FACTORIES, MATERIALS } from '../battle/terrain.js';
+import { TerrainObject, TERRAIN_FACTORIES, MATERIALS, PLATFORM_FACTORIES, createPlatform, checkPlatformHit } from '../battle/terrain.js';
 import { Projectile, predictTrajectory } from '../battle/projectile.js';
 import { checkCollision, createDecal, createHitParticles } from '../battle/collision.js';
 import { calculateDamage, createDamageText } from '../battle/damage.js';
@@ -181,6 +181,12 @@ export class BattleScene {
         destroyed: false, // 直接破坏，无HP
       });
     }
+
+    // --- 可破坏悬空平台（分段制，和地面一样打坑）---
+    const terrainKey2 = this.isStage ? (this.stageCfg.subject || 'pe') : this.bossId;
+    const platFactory = PLATFORM_FACTORIES[terrainKey2] || PLATFORM_FACTORIES.pe;
+    const platDefs = platFactory();
+    this.platforms = platDefs.map(d => createPlatform(d.x, d.y, d.w, d.h));
 
     // --- 系统 ---
     this.atb = new ATBSystem();
@@ -1198,6 +1204,18 @@ export class BattleScene {
         continue;
       }
       if (!proj.alive) continue;
+
+      // 平台分段碰撞（优先于地形/地面）
+      const platHit = checkPlatformHit(proj.x, proj.y, proj.radius, this.platforms);
+      if (platHit) {
+        // 破坏命中的分段
+        platHit.seg.destroyed = true;
+        this.audio.play('destroy');
+        this.particles.push(...createHitParticles(proj.x, proj.y, '#8D6E63', 16, 1.8));
+        this._addShake(5, 0.2);
+        proj.alive = false;
+        continue;
+      }
 
       // 地形 / 单位碰撞
       const hit = checkCollision(proj, this.terrain, units, this.groundSegments);
@@ -2736,9 +2754,44 @@ export class BattleScene {
         ctx.stroke();
       }
     }
-  }
 
-  // 学科特色背景装饰（夸张化）
+    // ===== 悬空平台渲染（分段制，和地面一样有坑有洞）=====
+    for (const plat of this.platforms) {
+      for (const seg of plat.segments) {
+        if (seg.destroyed) continue;
+        // 顶部高亮
+        ctx.fillStyle = 'rgba(255,255,255,0.15)';
+        ctx.fillRect(seg.x, seg.y, seg.w, 3);
+        // 主体
+        const platGrad = ctx.createLinearGradient(0, seg.y, 0, seg.y + seg.h);
+        platGrad.addColorStop(0, '#8D6E63');
+        platGrad.addColorStop(1, '#5D4037');
+        ctx.fillStyle = platGrad;
+        ctx.fillRect(seg.x, seg.y + 3, seg.w, seg.h - 3);
+        // 底部阴影
+        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+        ctx.fillRect(seg.x, seg.y + seg.h - 3, seg.w, 3);
+        // 描边
+        ctx.strokeStyle = '#3E2723';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(seg.x, seg.y, seg.w, seg.h);
+      }
+      // 破坏段边缘锯齿
+      for (let i = 0; i < plat.segments.length; i++) {
+        const seg = plat.segments[i];
+        if (seg.destroyed) continue;
+        const prev = plat.segments[i - 1];
+        const next = plat.segments[i + 1];
+        ctx.fillStyle = '#3E2723';
+        if (prev && prev.destroyed) {
+          ctx.fillRect(seg.x, seg.y, 2, seg.h);
+        }
+        if (next && next.destroyed) {
+          ctx.fillRect(seg.x + seg.w - 2, seg.y, 2, seg.h);
+        }
+      }
+    }
+  }
   _renderSubjectDecor(ctx, gy) {
     // 统一映射到学科 key（pe/chinese/art/math/english）
     const subjectMap = { jin: 'math', han: 'chinese', wu: 'english', ding: 'art', huang: 'pe' };
@@ -2930,14 +2983,6 @@ export class BattleScene {
         ctx.strokeStyle = mat.stroke;
         ctx.lineWidth = 2;
         ctx.strokeRect(t.x, t.y, t.w, t.h);
-
-        // 平台材质：顶部高亮 + 底部阴影
-        if (t.material === 'platform') {
-          ctx.fillStyle = 'rgba(255,255,255,0.15)';
-          ctx.fillRect(t.x, t.y, t.w, 4);
-          ctx.fillStyle = 'rgba(0,0,0,0.2)';
-          ctx.fillRect(t.x, t.y + t.h - 4, t.w, 4);
-        }
 
         // 木纹纹理（wood 材质）
         if (t.material === 'wood') {
