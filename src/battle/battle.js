@@ -227,7 +227,7 @@ export class BattleScene {
     this.timeScale = 1;
     this.bossQuote = null;
     this.bossQuoteTimer = 0;
-    this.bossIntroTimer = 2;
+    this.bossIntroTimer = 0;
     this.bossTurnDelay = 0;
     this.bossAction = null;
     this.bossActionPhase = 0;
