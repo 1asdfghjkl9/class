@@ -936,7 +936,7 @@ export class BattleScene {
     const targetY = unit.fallTargetY != null ? unit.fallTargetY : (CONFIG.GROUND_Y + 60 - unit.radius);
     if (unit.y >= targetY) {
       unit.y = targetY;
-      const fallDmg = Math.round((unit.fallVy || 0) * 0.5);
+      const fallDmg = Math.round((unit.fallVy || 0) * 0.05);
       unit.falling = false;
       unit.fallVy = 0;
       // 掉入坑底扣血
@@ -2714,10 +2714,10 @@ export class BattleScene {
     // ===== 学科特色背景装饰（夸张化）=====
     this._renderSubjectDecor(ctx, gy);
 
-    // 地面渲染（高度图：平滑曲线，圆形弹坑）
+    // 地面渲染（高度图：平滑曲线，圆形弹坑，深度阴影+边缘高光）
     const hm = this.groundHeightmap;
     if (hm) {
-      // 填充地面体
+      // --- 填充地面体（含弹坑形状）---
       ctx.beginPath();
       ctx.moveTo(0, CONFIG.HEIGHT);
       ctx.lineTo(0, hm[0]);
@@ -2732,7 +2732,45 @@ export class BattleScene {
       groundGrad.addColorStop(1, '#3E2723');
       ctx.fillStyle = groundGrad;
       ctx.fill();
-      // 地面表面线
+
+      // --- 挖空弹坑内部（用背景色覆盖坑腔）---
+      // 找到连续的坑区域并用背景色填充
+      let craterStart = -1;
+      for (let x = 0; x <= CONFIG.WIDTH; x++) {
+        const dy = x < CONFIG.WIDTH ? (hm[x] - gy) : 0;
+        const inCrater = dy > 3;
+        if (inCrater && craterStart < 0) {
+          craterStart = x;
+        } else if (!inCrater && craterStart >= 0) {
+          // 填充坑腔：从gy到坑底，用背景色
+          ctx.fillStyle = '#1a1a2e'; // 背景色（教室深色）
+          ctx.beginPath();
+          ctx.moveTo(craterStart, gy);
+          for (let xx = craterStart; xx < x; xx++) ctx.lineTo(xx, hm[xx]);
+          ctx.lineTo(x - 1, gy);
+          ctx.closePath();
+          ctx.fill();
+          craterStart = -1;
+        }
+      }
+
+      // --- 坑壁内描边（深色边缘，增强立体感）---
+      ctx.strokeStyle = '#3E2723';
+      ctx.lineWidth = 2;
+      let inCrater2 = false;
+      ctx.beginPath();
+      for (let x = 0; x < CONFIG.WIDTH; x++) {
+        const dy = hm[x] - gy;
+        if (dy > 3) {
+          if (!inCrater2) { ctx.moveTo(x, hm[x]); inCrater2 = true; }
+          else ctx.lineTo(x, hm[x]);
+        } else {
+          if (inCrater2) { ctx.stroke(); ctx.beginPath(); inCrater2 = false; }
+        }
+      }
+      if (inCrater2) ctx.stroke();
+
+      // --- 地面表面线 ---
       ctx.strokeStyle = '#8D6E63';
       ctx.lineWidth = 3;
       ctx.beginPath();
@@ -2741,18 +2779,26 @@ export class BattleScene {
         ctx.lineTo(x, hm[x]);
       }
       ctx.stroke();
-      // 纹理横线
+
+      // --- 纹理横线（只在非坑区域）---
       ctx.strokeStyle = 'rgba(0,0,0,0.06)';
       ctx.lineWidth = 1;
       for (let yy = gy + 30; yy < CONFIG.HEIGHT; yy += 35) {
         ctx.beginPath();
-        ctx.moveTo(0, yy);
-        ctx.lineTo(CONFIG.WIDTH, yy);
-        ctx.stroke();
+        let drawing = false;
+        for (let x = 0; x < CONFIG.WIDTH; x++) {
+          if (hm[x] <= yy) {
+            if (!drawing) { ctx.moveTo(x, yy); drawing = true; }
+            else ctx.lineTo(x, yy);
+          } else {
+            if (drawing) { ctx.stroke(); ctx.beginPath(); drawing = false; }
+          }
+        }
+        if (drawing) ctx.stroke();
       }
     }
 
-    // ===== 悬空平台渲染（高度图：平滑曲线，圆形弹坑）=====
+    // ===== 悬空平台渲染（高度图：平滑曲线，圆形弹坑，坑腔透明）=====
     for (const plat of this.platforms) {
       const phm = plat.heightmap;
       if (!phm) continue;
@@ -2774,14 +2820,43 @@ export class BattleScene {
       platGrad.addColorStop(1, '#5D4037');
       ctx.fillStyle = platGrad;
       ctx.fill();
+      // 挖空平台弹坑内部
+      let pCraterStart = -1;
+      for (let x = 0; x <= pw; x++) {
+        const dy = x < pw ? (phm[x] - py0) : 0;
+        const inC = dy > 2;
+        if (inC && pCraterStart < 0) pCraterStart = x;
+        else if (!inC && pCraterStart >= 0) {
+          ctx.fillStyle = '#1a1a2e';
+          ctx.beginPath();
+          ctx.moveTo(px0 + pCraterStart, py0);
+          for (let xx = pCraterStart; xx < x; xx++) ctx.lineTo(px0 + xx, phm[xx]);
+          ctx.lineTo(px0 + x - 1, py0);
+          ctx.closePath();
+          ctx.fill();
+          pCraterStart = -1;
+        }
+      }
+      // 坑壁内描边
+      ctx.strokeStyle = '#3E2723';
+      ctx.lineWidth = 2;
+      let pInCrater = false;
+      ctx.beginPath();
+      for (let x = 0; x < pw; x++) {
+        if (phm[x] - py0 > 2) {
+          if (!pInCrater) { ctx.moveTo(px0 + x, phm[x]); pInCrater = true; }
+          else ctx.lineTo(px0 + x, phm[x]);
+        } else {
+          if (pInCrater) { ctx.stroke(); ctx.beginPath(); pInCrater = false; }
+        }
+      }
+      if (pInCrater) ctx.stroke();
       // 平台表面线
       ctx.strokeStyle = '#A1887F';
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(px0, phm[0]);
-      for (let x = 1; x < pw; x++) {
-        ctx.lineTo(px0 + x, phm[x]);
-      }
+      for (let x = 1; x < pw; x++) ctx.lineTo(px0 + x, phm[x]);
       ctx.stroke();
       // 底部阴影
       ctx.fillStyle = 'rgba(0,0,0,0.25)';
@@ -2891,22 +2966,97 @@ export class BattleScene {
         ctx.arc(250 + i * 30, gy - 420, 12, 0, Math.PI * 2);
         ctx.fill();
       }
-      // 巨型画笔
-      ctx.strokeStyle = '#795548';
-      ctx.lineWidth = 5;
+      // 巨型画笔（倾斜15°，木柄+金属箍+笔毛+颜料尖）
+      ctx.save();
+      ctx.translate(1100, gy - 450);
+      ctx.rotate(0.26); // 倾斜约15°
+      // --- 木柄（上粗下细的梯形）---
+      const handleGrad = ctx.createLinearGradient(-10, 0, 10, 0);
+      handleGrad.addColorStop(0, '#5D4037');
+      handleGrad.addColorStop(0.5, '#8D6E63');
+      handleGrad.addColorStop(1, '#5D4037');
+      ctx.fillStyle = handleGrad;
       ctx.beginPath();
-      ctx.moveTo(1100, gy - 600);
-      ctx.lineTo(1100, gy - 300);
-      ctx.stroke();
-      ctx.fillStyle = '#E91E6340';
-      ctx.beginPath();
-      ctx.ellipse(1100, gy - 310, 15, 35, 0, 0, Math.PI * 2);
+      ctx.moveTo(-10, -160);  // 顶部左
+      ctx.lineTo(10, -160);   // 顶部右
+      ctx.lineTo(7, 10);      // 底部右（收窄）
+      ctx.lineTo(-7, 10);     // 底部左
+      ctx.closePath();
       ctx.fill();
-      // 颜料溅射
-      for (let i = 0; i < 8; i++) {
-        ctx.fillStyle = colors[i % colors.length] + '20';
+      ctx.strokeStyle = '#3E2723';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      // 木纹
+      ctx.strokeStyle = 'rgba(62,39,35,0.3)';
+      ctx.lineWidth = 0.8;
+      for (let i = 0; i < 3; i++) {
         ctx.beginPath();
-        ctx.arc(500 + Math.random() * 600, gy - 500 + Math.random() * 200, 20 + Math.random() * 30, 0, Math.PI * 2);
+        ctx.moveTo(-8 + i * 6, -155);
+        ctx.lineTo(-5 + i * 5, 5);
+        ctx.stroke();
+      }
+      // --- 金属箍（银色矩形带）---
+      const ferruleGrad = ctx.createLinearGradient(-9, 0, 9, 0);
+      ferruleGrad.addColorStop(0, '#757575');
+      ferruleGrad.addColorStop(0.5, '#BDBDBD');
+      ferruleGrad.addColorStop(1, '#757575');
+      ctx.fillStyle = ferruleGrad;
+      ctx.fillRect(-9, 8, 18, 18);
+      ctx.strokeStyle = '#424242';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(-9, 8, 18, 18);
+      // 箍上压痕线
+      ctx.strokeStyle = 'rgba(66,66,66,0.4)';
+      ctx.beginPath();
+      ctx.moveTo(-9, 14); ctx.lineTo(9, 14);
+      ctx.stroke();
+      // --- 笔毛（从箍底展开，渐变色）---
+      const bristleGrad = ctx.createLinearGradient(0, 26, 0, 80);
+      bristleGrad.addColorStop(0, '#E91E63');
+      bristleGrad.addColorStop(0.6, '#C2185B');
+      bristleGrad.addColorStop(1, '#880E4F');
+      ctx.fillStyle = bristleGrad;
+      ctx.beginPath();
+      ctx.moveTo(-9, 26);
+      ctx.quadraticCurveTo(-12, 50, -3, 78);  // 左侧弧线收尖
+      ctx.quadraticCurveTo(0, 82, 3, 78);      // 底部尖
+      ctx.quadraticCurveTo(12, 50, 9, 26);     // 右侧弧线
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#880E4F';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      // 笔毛纹理线
+      ctx.strokeStyle = 'rgba(136,14,79,0.5)';
+      ctx.lineWidth = 0.6;
+      for (let i = -2; i <= 2; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * 3, 28);
+        ctx.quadraticCurveTo(i * 3.5, 50, i * 1, 76);
+        ctx.stroke();
+      }
+      // 颜料尖（笔尖一滴颜料）
+      ctx.fillStyle = '#E91E6360';
+      ctx.beginPath();
+      ctx.ellipse(0, 80, 4, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      // 颜料溅射（固定位置，不每帧随机）
+      if (!this._artSplashes) {
+        this._artSplashes = [];
+        for (let i = 0; i < 8; i++) {
+          this._artSplashes.push({
+            x: 500 + Math.random() * 600,
+            y: gy - 500 + Math.random() * 200,
+            r: 20 + Math.random() * 30,
+            color: colors[i % colors.length],
+          });
+        }
+      }
+      for (const sp of this._artSplashes) {
+        ctx.fillStyle = sp.color + '20';
+        ctx.beginPath();
+        ctx.arc(sp.x, sp.y, sp.r, 0, Math.PI * 2);
         ctx.fill();
       }
     } else if (bid === 'pe') {
