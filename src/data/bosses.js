@@ -1,13 +1,13 @@
 // ============================================================
-// data/bosses.js — Boss + 学科线学生敌人配置
+// data/bosses.js — Boss + 学科线学生敌人配置（v3，数值×100）
 // ============================================================
 
-// ===== 金老师（班主任支线 Boss）=====
+// ===== 金老师 =====
 export const BOSS_JIN = {
   id: 'jin',
   name: '金老师',
   title: '班主任',
-  hp: 340,
+  hp: 34000,
   speed: 18,
   dr: 0.10,
   patrolMin: 850,
@@ -18,8 +18,8 @@ export const BOSS_JIN = {
   rollCallInterval: 3,
   dragClassInterval: 2,
   weakpoints: [
-    { id: 'penbag', name: '绿色笔袋', hp: 30, offsetX: -8, offsetY: 16, radius: 16, color: '#4CAF50', breakEffect: 'no_drag' },
-    { id: 'book', name: '大富贵英语书', hp: 40, offsetX: -34, offsetY: -24, radius: 18, color: '#FFD700', breakEffect: 'no_rollcall' },
+    { id: 'penbag', name: '绿色笔袋', hp: 3000, offsetX: -8, offsetY: 16, radius: 16, color: '#4CAF50', breakEffect: 'no_drag' },
+    { id: 'book', name: '大富贵英语书', hp: 4000, offsetX: -34, offsetY: -24, radius: 18, color: '#FFD700', breakEffect: 'no_rollcall' },
   ],
   quotes: {
     intro: '我看你是唯恐天下不乱。',
@@ -28,17 +28,17 @@ export const BOSS_JIN = {
     enrage: '行，那我叫你家长来一趟。',
   },
   aimError: 40,
-  shotBaseDamage: 14,
+  shotBaseDamage: 1400,
   shotSpeed: 600,
   color: '#FF6B6B',
 };
 
-// ===== 韩老师（语文支线 Boss）=====
+// ===== 韩老师 =====
 export const BOSS_HAN = {
   id: 'han',
   name: '韩老师',
   title: '大力女皇',
-  hp: 320,
+  hp: 32000,
   speed: 19,
   dr: 0.08,
   swayRange: 60,
@@ -51,12 +51,12 @@ export const BOSS_HAN = {
   quizTimerBroken: 8,
   paperCount: 6,
   aimError: 35,
-  shotBaseDamage: 13,
+  shotBaseDamage: 1300,
   shotSpeed: 620,
   color: '#E91E63',
   weakpoints: [
-    { id: 'papers', name: '一沓试卷', hp: 35, offsetX: -36, offsetY: 8, radius: 16, color: '#E0E0E0', breakEffect: 'quiz_interval_up' },
-    { id: 'timer', name: '肩上计时器', hp: 30, offsetX: -14, offsetY: -34, radius: 14, color: '#FF9800', breakEffect: 'quiz_timer_up' },
+    { id: 'papers', name: '一沓试卷', hp: 3500, offsetX: -36, offsetY: 8, radius: 16, color: '#E0E0E0', breakEffect: 'quiz_interval_up' },
+    { id: 'timer', name: '肩上计时器', hp: 3000, offsetX: -14, offsetY: -34, radius: 14, color: '#FF9800', breakEffect: 'quiz_timer_up' },
   ],
   quotes: {
     intro: '口答！',
@@ -66,12 +66,12 @@ export const BOSS_HAN = {
   },
 };
 
-// ===== 吴老师（英语支线 Boss）=====
+// ===== 吴老师 =====
 export const BOSS_WU = {
   id: 'wu',
   name: '吴老师',
   title: '纪律主任',
-  hp: 300,
+  hp: 30000,
   speed: 20,
   dr: 0.12,
   homeX: 1050,
@@ -80,14 +80,14 @@ export const BOSS_WU = {
   disciplineInterval: 3,
   disciplineIntervalBroken: 5,
   disciplineDuration: 3,
-  disciplineDamage: 30,
+  disciplineDamage: 3000,
   aimError: 30,
-  shotBaseDamage: 12,
+  shotBaseDamage: 1200,
   shotSpeed: 640,
   color: '#7B68EE',
   weakpoints: [
-    { id: 'pointer', name: '教鞭', hp: 30, offsetX: -28, offsetY: -22, radius: 15, color: '#8BC34A', breakEffect: 'discipline_interval_up' },
-    { id: 'homework_stack', name: '作业本堆', hp: 40, offsetX: -38, offsetY: 14, radius: 17, color: '#42A5F5', breakEffect: 'no_homework' },
+    { id: 'pointer', name: '教鞭', hp: 3000, offsetX: -28, offsetY: -22, radius: 15, color: '#8BC34A', breakEffect: 'discipline_interval_up' },
+    { id: 'homework_stack', name: '作业本堆', hp: 4000, offsetX: -38, offsetY: 14, radius: 17, color: '#42A5F5', breakEffect: 'no_homework' },
   ],
   quotes: {
     intro: '在我的课上不允许有人写作业！',
@@ -102,7 +102,7 @@ export const BOSS_DING = {
   id: 'ding',
   name: '丁老师',
   title: '色彩暴君',
-  hp: 300,
+  hp: 30000,
   speed: 21,
   dr: 0.08,
   patrolMin: 850,
@@ -111,15 +111,15 @@ export const BOSS_DING = {
   radius: 34,
   enrageThreshold: 0.25,
   weakpoints: [
-    { id: 'palette', name: '调色盘', hp: 28, offsetX: -8, offsetY: 16, radius: 16, color: '#FF6B6B', breakEffect: 'no_drag' },
-    { id: 'brush', name: '大号画笔', hp: 36, offsetX: -34, offsetY: -24, radius: 18, color: '#8BC34A', breakEffect: 'no_rollcall' },
+    { id: 'palette', name: '调色盘', hp: 2800, offsetX: -8, offsetY: 16, radius: 16, color: '#FF6B6B', breakEffect: 'no_drag' },
+    { id: 'brush', name: '大号画笔', hp: 3600, offsetX: -34, offsetY: -24, radius: 18, color: '#8BC34A', breakEffect: 'no_rollcall' },
   ],
   quotes: {
     intro: '今天画静物写生，谁画不好重画一百遍。',
     enrage: '你给我出去，对着走廊画！',
   },
   aimError: 32,
-  shotBaseDamage: 13,
+  shotBaseDamage: 1300,
   shotSpeed: 620,
   color: '#FF9800',
 };
@@ -129,7 +129,7 @@ export const BOSS_HUANG = {
   id: 'huang',
   name: '黄老师',
   title: '体能魔王',
-  hp: 360,
+  hp: 36000,
   speed: 24,
   dr: 0.15,
   homeX: 1050,
@@ -138,12 +138,12 @@ export const BOSS_HUANG = {
   radius: 38,
   rageThreshold: 0.45,
   aimError: 28,
-  shotBaseDamage: 16,
+  shotBaseDamage: 1600,
   shotSpeed: 680,
   color: '#4CAF50',
   weakpoints: [
-    { id: 'whistle', name: '银哨子', hp: 30, offsetX: -36, offsetY: 8, radius: 14, color: '#C0C0C0', breakEffect: 'quiz_interval_up' },
-    { id: 'stopwatch', name: '秒表', hp: 30, offsetX: -14, offsetY: -34, radius: 14, color: '#FF9800', breakEffect: 'quiz_timer_up' },
+    { id: 'whistle', name: '银哨子', hp: 3000, offsetX: -36, offsetY: 8, radius: 14, color: '#C0C0C0', breakEffect: 'quiz_interval_up' },
+    { id: 'stopwatch', name: '秒表', hp: 3000, offsetX: -14, offsetY: -34, radius: 14, color: '#FF9800', breakEffect: 'quiz_timer_up' },
   ],
   quotes: {
     intro: '全班跑十圈，跑不完的留下来！',
@@ -154,50 +154,48 @@ export const BOSS_HUANG = {
 
 // ===== 小怪 =====
 export const MINION = {
-  hp: 40,
+  hp: 4000,
   radius: 24,
   speed: 15,
   dr: 0,
-  shotDamage: 15,
+  shotDamage: 1500,
   shotSpeed: 500,
 };
 
-// ===== 学科线学生敌人 =====
-// 每个 stage 对应一个学生敌人；shotType: 'flat'(平射) | 'lob'(吊射)
-// skillPref: 'rapid'(连发) | 'heavy'(高伤) | 'annoy'(恶心) | 'scatter'(散射) | 'heal'(治疗)
+// ===== 学科线学生敌人（数值×100）=====
 export const STUDENT_ENEMIES = {
   // 体育线
-  pe1: { id: 'pe1', name: '马铭喆', hp: 100, shotType: 'lob', skillPref: 'heavy', aimError: 38, shotBaseDamage: 18, shotSpeed: 580, color: '#66BB6A', radius: 30, speed: 20, homeX: 1100, dr: 0.05 },
-  pe2: { id: 'pe2', name: '武睿晞', hp: 110, shotType: 'lob', skillPref: 'annoy', aimError: 35, shotBaseDamage: 14, shotSpeed: 600, color: '#42A5F5', radius: 30, speed: 22, homeX: 1100, dr: 0.05 },
-  pe3: { id: 'pe3', name: '张书格', hp: 120, shotType: 'flat', skillPref: 'heavy', aimError: 32, shotBaseDamage: 16, shotSpeed: 640, color: '#FFA726', radius: 30, speed: 20, homeX: 1100, dr: 0.06 },
-  pe4: { id: 'pe4', name: '谭梓峻', hp: 100, shotType: 'lob', skillPref: 'heavy', aimError: 36, shotBaseDamage: 17, shotSpeed: 590, color: '#EF5350', radius: 30, speed: 21, homeX: 1100, dr: 0.05 },
-  pe5: { id: 'pe5', name: '封佳琪', hp: 140, shotType: 'flat', skillPref: 'scatter', aimError: 30, shotBaseDamage: 14, shotSpeed: 660, color: '#AB47BC', radius: 32, speed: 23, homeX: 1100, dr: 0.08 },
+  pe1: { id: 'pe1', name: '马铭喆', hp: 10000, shotType: 'lob', skillPref: 'heavy', aimError: 38, shotBaseDamage: 1800, shotSpeed: 580, color: '#66BB6A', radius: 30, speed: 20, homeX: 1100, dr: 0.05 },
+  pe2: { id: 'pe2', name: '武睿晞', hp: 11000, shotType: 'lob', skillPref: 'annoy', aimError: 35, shotBaseDamage: 1400, shotSpeed: 600, color: '#42A5F5', radius: 30, speed: 22, homeX: 1100, dr: 0.05 },
+  pe3: { id: 'pe3', name: '张书格', hp: 12000, shotType: 'flat', skillPref: 'heavy', aimError: 32, shotBaseDamage: 1600, shotSpeed: 640, color: '#FFA726', radius: 30, speed: 20, homeX: 1100, dr: 0.06 },
+  pe4: { id: 'pe4', name: '谭梓峻', hp: 10000, shotType: 'lob', skillPref: 'heavy', aimError: 36, shotBaseDamage: 1700, shotSpeed: 590, color: '#EF5350', radius: 30, speed: 21, homeX: 1100, dr: 0.05 },
+  pe5: { id: 'pe5', name: '封佳琪', hp: 14000, shotType: 'flat', skillPref: 'scatter', aimError: 30, shotBaseDamage: 1400, shotSpeed: 660, color: '#AB47BC', radius: 32, speed: 23, homeX: 1100, dr: 0.08 },
 
   // 语文线
-  cn1: { id: 'cn1', name: '盛丽文', hp: 100, shotType: 'flat', skillPref: 'heavy', aimError: 36, shotBaseDamage: 17, shotSpeed: 600, color: '#8D6E63', radius: 30, speed: 18, homeX: 1100, dr: 0.05 },
-  cn2: { id: 'cn2', name: '叶辰希', hp: 110, shotType: 'lob', skillPref: 'rapid', aimError: 32, shotBaseDamage: 12, shotSpeed: 580, color: '#5C6BC0', radius: 30, speed: 20, homeX: 1100, dr: 0.05 },
-  cn3: { id: 'cn3', name: '徐紫菡', hp: 130, shotType: 'flat', skillPref: 'heavy', aimError: 28, shotBaseDamage: 18, shotSpeed: 640, color: '#EC407A', radius: 32, speed: 19, homeX: 1100, dr: 0.08, isRep: true }, // 语文课代表
+  cn1: { id: 'cn1', name: '盛丽文', hp: 10000, shotType: 'flat', skillPref: 'heavy', aimError: 36, shotBaseDamage: 1700, shotSpeed: 600, color: '#8D6E63', radius: 30, speed: 18, homeX: 1100, dr: 0.05, stealthCharges: 3 }, // 盛丽文3次隐身
+  cn2: { id: 'cn2', name: '叶辰希', hp: 11000, shotType: 'lob', skillPref: 'rapid', aimError: 32, shotBaseDamage: 1200, shotSpeed: 580, color: '#5C6BC0', radius: 30, speed: 20, homeX: 1100, dr: 0.05 },
+  cn3: { id: 'cn3', name: '徐紫菡', hp: 13000, shotType: 'flat', skillPref: 'heavy', aimError: 28, shotBaseDamage: 1800, shotSpeed: 640, color: '#EC407A', radius: 32, speed: 19, homeX: 1100, dr: 0.08, isRep: true },
 
   // 美术线
-  art1: { id: 'art1', name: '武睿晞', hp: 110, shotType: 'flat', skillPref: 'rapid', aimError: 33, shotBaseDamage: 13, shotSpeed: 620, color: '#42A5F5', radius: 30, speed: 22, homeX: 1100, dr: 0.05 },
-  art2: { id: 'art2', name: '张书格', hp: 120, shotType: 'flat', skillPref: 'rapid', aimError: 30, shotBaseDamage: 14, shotSpeed: 640, color: '#FFA726', radius: 30, speed: 20, homeX: 1100, dr: 0.06 },
-  art3: { id: 'art3', name: '李为先', hp: 130, shotType: 'lob', skillPref: 'rapid', aimError: 22, shotBaseDamage: 15, shotSpeed: 600, color: '#26A69A', radius: 32, speed: 21, homeX: 1100, dr: 0.08, isRep: true }, // 现美术课代表，吊射精度高
-  art4: { id: 'art4', name: '朱婉宁·残影', hp: 80, shotType: 'lob', skillPref: 'annoy', aimError: 30, shotBaseDamage: 10, shotSpeed: 560, color: '#9E9E9E', radius: 30, speed: 18, homeX: 1100, dr: 0.03, isPhantom: true }, // 残影，低数值
-  art5: { id: 'art5', name: '朱婉宁·真身', hp: 180, shotType: 'flat', skillPref: 'heavy', aimError: 24, shotBaseDamage: 20, shotSpeed: 680, color: '#7B1FA2', radius: 34, speed: 22, homeX: 1100, dr: 0.12, isTrueForm: true }, // 真身，高数值
+  art1: { id: 'art1', name: '武睿晞', hp: 11000, shotType: 'flat', skillPref: 'rapid', aimError: 33, shotBaseDamage: 1300, shotSpeed: 620, color: '#42A5F5', radius: 30, speed: 22, homeX: 1100, dr: 0.05 },
+  art2: { id: 'art2', name: '张书格', hp: 12000, shotType: 'flat', skillPref: 'rapid', aimError: 30, shotBaseDamage: 1400, shotSpeed: 640, color: '#FFA726', radius: 30, speed: 20, homeX: 1100, dr: 0.06 },
+  art3: { id: 'art3', name: '李为先', hp: 13000, shotType: 'lob', skillPref: 'rapid', aimError: 22, shotBaseDamage: 1500, shotSpeed: 600, color: '#26A69A', radius: 32, speed: 21, homeX: 1100, dr: 0.08, isRep: true },
+  art4: { id: 'art4', name: '朱婉宁·残影', hp: 8000, shotType: 'lob', skillPref: 'annoy', aimError: 30, shotBaseDamage: 1000, shotSpeed: 560, color: '#9E9E9E', radius: 30, speed: 18, homeX: 1100, dr: 0.03, isPhantom: true },
+  art5: { id: 'art5', name: '朱婉宁·真身', hp: 18000, shotType: 'flat', skillPref: 'heavy', aimError: 24, shotBaseDamage: 2000, shotSpeed: 680, color: '#7B1FA2', radius: 34, speed: 22, homeX: 1100, dr: 0.12, isTrueForm: true },
 
   // 数学线
-  ma1: { id: 'ma1', name: '张书格', hp: 120, shotType: 'flat', skillPref: 'rapid', aimError: 32, shotBaseDamage: 14, shotSpeed: 640, color: '#FFA726', radius: 30, speed: 20, homeX: 1100, dr: 0.06 },
-  ma2a: { id: 'ma2a', name: '徐子森', hp: 100, shotType: 'flat', skillPref: 'rapid', aimError: 30, shotBaseDamage: 13, shotSpeed: 640, color: '#7986CB', radius: 28, speed: 21, homeX: 1000, dr: 0.05, isTwin: true, twinId: 'ma2b' }, // 双课代表
-  ma2b: { id: 'ma2b', name: '李清逸', hp: 100, shotType: 'lob', skillPref: 'heal', aimError: 34, shotBaseDamage: 11, shotSpeed: 580, color: '#AED581', radius: 28, speed: 20, homeX: 1200, dr: 0.05, isTwin: true }, // 双课代表
-  ma3: { id: 'ma3', name: '李为先', hp: 130, shotType: 'lob', skillPref: 'rapid', aimError: 22, shotBaseDamage: 15, shotSpeed: 600, color: '#26A69A', radius: 32, speed: 21, homeX: 1100, dr: 0.08 },
-  ma4: { id: 'ma4', name: '吴谦祥', hp: 130, shotType: 'flat', skillPref: 'scatter', aimError: 28, shotBaseDamage: 15, shotSpeed: 650, color: '#789262', radius: 32, speed: 20, homeX: 1100, dr: 0.08 },
+  ma1: { id: 'ma1', name: '张书格', hp: 12000, shotType: 'flat', skillPref: 'rapid', aimError: 32, shotBaseDamage: 1400, shotSpeed: 640, color: '#FFA726', radius: 30, speed: 20, homeX: 1100, dr: 0.06 },
+  ma2a: { id: 'ma2a', name: '徐子森', hp: 10000, shotType: 'flat', skillPref: 'rapid', aimError: 30, shotBaseDamage: 1300, shotSpeed: 640, color: '#7986CB', radius: 28, speed: 21, homeX: 1000, dr: 0.05, isTwin: true, twinId: 'ma2b' },
+  ma2b: { id: 'ma2b', name: '李清逸', hp: 10000, shotType: 'lob', skillPref: 'heal', aimError: 34, shotBaseDamage: 1100, shotSpeed: 580, color: '#AED581', radius: 28, speed: 20, homeX: 1200, dr: 0.05, isTwin: true },
+  ma3: { id: 'ma3', name: '李为先', hp: 13000, shotType: 'lob', skillPref: 'rapid', aimError: 22, shotBaseDamage: 1500, shotSpeed: 600, color: '#26A69A', radius: 32, speed: 21, homeX: 1100, dr: 0.08 },
+  ma4: { id: 'ma4', name: '吴谦祥', hp: 13000, shotType: 'flat', skillPref: 'scatter', aimError: 28, shotBaseDamage: 1500, shotSpeed: 650, color: '#789262', radius: 32, speed: 20, homeX: 1100, dr: 0.08 },
 
   // 英语线
-  en1: { id: 'en1', name: '吴谦祥', hp: 130, shotType: 'flat', skillPref: 'scatter', aimError: 28, shotBaseDamage: 15, shotSpeed: 650, color: '#789262', radius: 32, speed: 20, homeX: 1100, dr: 0.08 },
-  en2: { id: 'en2', name: '封佳琪', hp: 140, shotType: 'flat', skillPref: 'scatter', aimError: 30, shotBaseDamage: 14, shotSpeed: 660, color: '#AB47BC', radius: 32, speed: 23, homeX: 1100, dr: 0.08 },
-  en3: { id: 'en3', name: '李为先', hp: 130, shotType: 'lob', skillPref: 'rapid', aimError: 22, shotBaseDamage: 15, shotSpeed: 600, color: '#26A69A', radius: 32, speed: 21, homeX: 1100, dr: 0.08 },
-  en4a: { id: 'en4a', name: '叶辰希', hp: 110, shotType: 'lob', skillPref: 'rapid', aimError: 30, shotBaseDamage: 12, shotSpeed: 580, color: '#5C6BC0', radius: 30, speed: 20, homeX: 1000, dr: 0.05, isTwin: true, twinId: 'en4b' }, // 双课代表
-  en4b: { id: 'en4b', name: '陈玥菱', hp: 110, shotType: 'lob', skillPref: 'heavy', aimError: 32, shotBaseDamage: 16, shotSpeed: 580, color: '#F48FB1', radius: 30, speed: 20, homeX: 1200, dr: 0.05, isTwin: true }, // 双课代表
+  en1: { id: 'en1', name: '吴谦祥', hp: 13000, shotType: 'flat', skillPref: 'scatter', aimError: 28, shotBaseDamage: 1500, shotSpeed: 650, color: '#789262', radius: 32, speed: 20, homeX: 1100, dr: 0.08 },
+  en2: { id: 'en2', name: '封佳琪', hp: 14000, shotType: 'flat', skillPref: 'scatter', aimError: 30, shotBaseDamage: 1400, shotSpeed: 660, color: '#AB47BC', radius: 32, speed: 23, homeX: 1100, dr: 0.08 },
+  en3: { id: 'en3', name: '李为先', hp: 13000, shotType: 'lob', skillPref: 'rapid', aimError: 22, shotBaseDamage: 1500, shotSpeed: 600, color: '#26A69A', radius: 32, speed: 21, homeX: 1100, dr: 0.08 },
+  en4a: { id: 'en4a', name: '叶辰希', hp: 11000, shotType: 'lob', skillPref: 'rapid', aimError: 30, shotBaseDamage: 1200, shotSpeed: 580, color: '#5C6BC0', radius: 30, speed: 20, homeX: 1000, dr: 0.05, isTwin: true, twinId: 'en4b' },
+  en4b: { id: 'en4b', name: '陈玥菱', hp: 11000, shotType: 'lob', skillPref: 'heavy', aimError: 32, shotBaseDamage: 1600, shotSpeed: 580, color: '#F48FB1', radius: 30, speed: 20, homeX: 1200, dr: 0.05, isTwin: true },
 };
 
 // ===== Boss 注册表 =====
@@ -207,6 +205,5 @@ export const BOSSES = {
   wu: BOSS_WU,
   ding: BOSS_DING,
   huang: BOSS_HUANG,
-  // 学生敌人也注册进 BOSSES 供 BattleScene 查找
   ...STUDENT_ENEMIES,
 };
