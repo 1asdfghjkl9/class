@@ -1,6 +1,5 @@
 // ============================================================
-// save.js — 存档系统 v2（金币 / 积分 / 等级 / 天赋 / 成就 / 武器实例 / 挑战）
-// 支持账号隔离：每个账号有独立的存档
+// save.js — 存档系统 v3（金币×100 / 武器碎片 / 道具解锁 / 配装）
 // ============================================================
 
 import { getCurrentSaveKey, isLoggedIn } from './account.js';
@@ -8,59 +7,62 @@ import { getCurrentSaveKey, isLoggedIn } from './account.js';
 const OLD_KEY = 'class_battle_save_v1';
 function getSaveKey() {
   if (isLoggedIn()) return getCurrentSaveKey();
-  return 'class_battle_save_v2';
+  return 'class_battle_save_v3';
 }
 
 export function createDefaultSave() {
   return {
-    version: 2,
-    coins: 1000,
-    exp: 0,          // 当前等级内的积分
+    version: 3,
+    coins: 100000,
+    exp: 0,
     level: 1,
 
     progress: {
-      bosses: { jin: 0, han: 0, wu: 0 },
-      stages: {},                 // { stageId: 1 }
+      bosses: { jin: 0, han: 0, wu: 0, ding: 0, huang: 0 },
+      stages: {},
       subjectBadges: { chinese: 0, math: 0, english: 0, art: 0, pe: 0 },
     },
 
     // 技能
     skillsUnlocked: { wall: 1, chalk: 1, justice: 1 },
     skillLevels: { wall: 1, chalk: 1, justice: 1 },
-    skillFragments: {},           // { skillId: count }
+    skillFragments: {},
 
     // 道具
+    itemUnlocked: { kite: true, not_our_class: true, what_doing: true, teacher_snack: true },
     itemLevels: {},
+    itemFragments: {},
 
-    // 武器（每把武器一个实例：等级 + 词条）
+    // 武器
     weapons: {
       owned: {
         pen_gun: { level: 1, affixes: [] },
       },
       equipped: 'pen_gun',
+      fragments: {},   // { weaponId: count }
     },
 
     // 装备
     equipped: {
       skills: ['wall', 'chalk', 'justice'],
-      items: [],
+      items: [],       // 装备的道具ID列表
     },
 
     // 天赋
     talents: {
       points: 0,
-      spent: {},                  // { tierId: 1 }
+      spent: {},
     },
 
     // 成就
     achievements: {
-      unlocked: {},               // { achId: timestamp }
+      unlocked: {},
       title: '',
     },
 
     // 挑战
     challenges: {
-      cleared: {},                // { challengeId: timestamp }
+      cleared: {},
     },
 
     // 统计
@@ -90,7 +92,7 @@ export function createDefaultSave() {
   };
 }
 
-// 深合并：保留新字段默认值，同时吃进旧存档数据
+// 深合并
 function deepMerge(def, data) {
   if (data === null || data === undefined) return def;
   if (Array.isArray(def) || typeof def !== 'object') return data;
@@ -110,14 +112,17 @@ function migrateOld(old) {
   const def = createDefaultSave();
   if (!old) return def;
   const s = deepMerge(def, old);
-  s.version = 2;
-  s.coins = old.coins ?? 1000;
+  s.version = 3;
+  // 旧金币×100
+  s.coins = (old.coins ?? 1000) * 100;
   if (old.progress?.bosses) s.progress.bosses = { ...def.progress.bosses, ...old.progress.bosses };
   if (old.equipped?.skills) s.equipped.skills = old.equipped.skills;
   if (old.equipped?.weapon && old.weapons?.owned?.[old.equipped.weapon]) {
     s.weapons.equipped = old.equipped.weapon;
   }
   if (old.stats) s.stats = { ...def.stats, ...old.stats };
+  // 迁移默认道具解锁
+  s.itemUnlocked = { kite: true, not_our_class: true, what_doing: true, teacher_snack: true };
   return s;
 }
 
@@ -127,7 +132,7 @@ export function loadSave() {
     if (raw) {
       const data = JSON.parse(raw);
       const merged = deepMerge(createDefaultSave(), data);
-      merged.version = 2;
+      merged.version = 3;
       return merged;
     }
     // 尝试迁移旧存档
@@ -195,15 +200,44 @@ export function hasWeapon(save, weaponId) {
   return !!save.weapons.owned[weaponId];
 }
 
-// 获得武器；已有则转碎片（金币）
 export function grantWeapon(save, weaponId, affixes = []) {
   if (save.weapons.owned[weaponId]) {
-    const refund = 80;
+    const refund = 8000;
     addCoins(save, refund);
     return { duplicated: true, refund };
   }
   save.weapons.owned[weaponId] = { level: 1, affixes };
   return { duplicated: false };
+}
+
+// ===== 武器碎片 =====
+export function getWeaponFragments(save, weaponId) {
+  return save.weapons.fragments[weaponId] || 0;
+}
+
+export function addWeaponFragments(save, weaponId, n = 1) {
+  save.weapons.fragments[weaponId] = (save.weapons.fragments[weaponId] || 0) + n;
+  return save.weapons.fragments[weaponId];
+}
+
+// ===== 道具解锁 =====
+export function isItemUnlocked(save, itemId) {
+  return !!save.itemUnlocked[itemId];
+}
+
+export function unlockItem(save, itemId) {
+  if (save.itemUnlocked[itemId]) return false;
+  save.itemUnlocked[itemId] = true;
+  return true;
+}
+
+export function getItemFragments(save, itemId) {
+  return save.itemFragments[itemId] || 0;
+}
+
+export function addItemFragments(save, itemId, n = 1) {
+  save.itemFragments[itemId] = (save.itemFragments[itemId] || 0) + n;
+  return save.itemFragments[itemId];
 }
 
 // ===== 技能 =====
