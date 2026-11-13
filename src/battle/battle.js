@@ -79,6 +79,10 @@ export class BattleScene {
       if (enemy) {
         cfg = { ...enemy, ...stageCfg, ...enemy }; // enemy 战斗属性优先，但保留 stage 的 weakpoints 等
         cfg.id = this.bossId; // 保持原始 stageId
+        // ★ 小怪物（学生）去掉语音和称号
+        cfg.title = '';
+        cfg.nickname = '';
+        cfg.quote = '';
       }
     }
 
@@ -1638,7 +1642,8 @@ export class BattleScene {
     this.bossActionPhase = 0;
     this.bossActionTimer = 0;
 
-    if (action.quote) {
+    // ★ 小怪物（学生）不显示语音
+    if (action.quote && !this.isStage) {
       this.bossQuote = action.quote;
       this.bossQuoteTimer = 2.5;
     }
@@ -4351,14 +4356,17 @@ export class BattleScene {
     ctx.font = 'bold 48px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(bossCfg?.name || 'Boss', CONFIG.WIDTH / 2, CONFIG.HEIGHT / 2 - 30);
-    ctx.fillStyle = '#FFF';
-    ctx.font = 'bold 24px sans-serif';
-    ctx.fillText(bossCfg?.title || '', CONFIG.WIDTH / 2, CONFIG.HEIGHT / 2 + 10);
-    const introQuote = (bossCfg && bossCfg.quotes && bossCfg.quotes.intro) || (bossCfg && bossCfg.quote) || '';
-    if (introQuote) {
-      ctx.fillStyle = '#FFE66D';
-      ctx.font = '18px sans-serif';
-      ctx.fillText('"' + introQuote + '"', CONFIG.WIDTH / 2, CONFIG.HEIGHT / 2 + 50);
+    // ★ 小怪物（学生）不显示称号和语音
+    if (!this.isStage) {
+      ctx.fillStyle = '#FFF';
+      ctx.font = 'bold 24px sans-serif';
+      ctx.fillText(bossCfg?.title || '', CONFIG.WIDTH / 2, CONFIG.HEIGHT / 2 + 10);
+      const introQuote = (bossCfg && bossCfg.quotes && bossCfg.quotes.intro) || (bossCfg && bossCfg.quote) || '';
+      if (introQuote) {
+        ctx.fillStyle = '#FFE66D';
+        ctx.font = '18px sans-serif';
+        ctx.fillText('"' + introQuote + '"', CONFIG.WIDTH / 2, CONFIG.HEIGHT / 2 + 50);
+      }
     }
     ctx.textAlign = 'left';
     ctx.globalAlpha = 1;
