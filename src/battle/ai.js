@@ -95,7 +95,7 @@ export class BossAI {
     
     // ★ 隐身检测：玩家隐身时AI几乎无法瞄准
     const playerStealthed = this._isPlayerStealthed();
-    let aimErr = (u.aimError || 42) * 0.35;
+    let aimErr = (u.aimError || 42) * 0.15; // AI更准
     if (playerStealthed) {
       // 隐身时瞄准误差扩大 8 倍，并丢失移动预测
       aimErr *= 8;
