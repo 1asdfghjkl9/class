@@ -1,9 +1,11 @@
 // ============================================================
-// battle/ai.js — 全员 AI（Boss + 学科线学生）
-// 支持平射/吊射、技能偏好（连发/高伤/恶心/散射/治疗）
+// battle/ai.js — 全员 AI v3
+// 修复：隐身时AI大幅降低命中精度
+// 新增：怪物可用道具、盛丽文3次隐身、AI增强
 // ============================================================
 
 import { CONFIG } from '../config.js';
+import { ITEMS, rollEnemyItem } from '../data/items.js';
 
 export class BossAI {
   constructor(bossId, bossData, battle) {
@@ -25,6 +27,10 @@ export class BossAI {
     this.disciplineCd = bossData.disciplineInterval ?? 3;
     this.disciplineActive = false;
     this.disciplineTimer = 0;
+    // 怪物道具冷却
+    this.itemCd = 2;
+    // 盛丽文隐身充能
+    this.stealthCharges = bossData.stealthCharges || 0;
   }
 
   get unit() {
@@ -36,6 +42,11 @@ export class BossAI {
     if (!u || !u.weakpoints) return false;
     const wp = u.weakpoints.find(w => w.id === id);
     return wp && !wp.destroyed;
+  }
+
+  // ===== 检查玩家是否隐身 =====
+  _isPlayerStealthed() {
+    return this.battle.status && this.battle.status.has(this.battle.player, 'stealth');
   }
 
   // ===== 位置更新 =====
@@ -69,6 +80,7 @@ export class BossAI {
   }
 
   // ===== 射击参数：平射 vs 吊射 =====
+  // 修复隐身：玩家隐身时AI大幅降低精度
   getNormalShotParams() {
     const u = this.unit;
     const target = this.battle.player;
@@ -81,7 +93,15 @@ export class BossAI {
     if (this.battle._moveLeft || this.battle._moveBtnLeft) leadX = -CONFIG.PLAYER_MOVE_SPEED * 0.3;
     if (this.battle._moveRight || this.battle._moveBtnRight) leadX = CONFIG.PLAYER_MOVE_SPEED * 0.3;
     
-    const aimErr = (u.aimError || 42) * 0.35;
+    // ★ 隐身检测：玩家隐身时AI几乎无法瞄准
+    const playerStealthed = this._isPlayerStealthed();
+    let aimErr = (u.aimError || 42) * 0.35;
+    if (playerStealthed) {
+      // 隐身时瞄准误差扩大 8 倍，并丢失移动预测
+      aimErr *= 8;
+      leadX = 0;
+    }
+    
     const tx = target.x + leadX + (Math.random() - 0.5) * (aimErr * 2 / Math.max(0.3, accMul));
     const ty = target.y - target.radius;
     const dx = tx - bx;
@@ -89,22 +109,17 @@ export class BossAI {
     const speed = (u.shotSpeed ?? 600) * 1.3;
     
     if (u.shotType === 'lob') {
-      // 吊射：高弧线 ∩ 型
-      // 李为先吊射精度更高
       const lobErr = u.name === '李为先' ? aimErr * 0.4 : aimErr;
       const lobTx = target.x + leadX + (Math.random() - 0.5) * (lobErr * 2 / Math.max(0.3, accMul));
       const lobDx = lobTx - bx;
       const dir = lobDx >= 0 ? 1 : -1;
       const lobSpeed = speed * 0.75;
       const t = Math.max(0.3, Math.abs(lobDx) / lobSpeed);
-      // 抛物线高度额外加成
       const arcHeight = Math.abs(lobDx) * 0.4 + 200;
       const vy = (ty - by - 0.5 * CONFIG.GRAVITY * t * t - arcHeight) / t;
-      // 调整 vy 使弧线更高
       const adjustedVy = vy - Math.sqrt(2 * CONFIG.GRAVITY * arcHeight);
       return { x: bx, y: by, vx: dir * lobSpeed, vy: adjustedVy };
     } else {
-      // 平射：低弧线直接瞄准
       const dir = dx >= 0 ? 1 : -1;
       const vx = dir * speed;
       const t = Math.max(0.1, Math.abs(dx) / speed);
@@ -116,6 +131,27 @@ export class BossAI {
   // ===== 主入口 =====
   decideAction() {
     this.turnCount++;
+    
+    // ===== 怪物道具使用（所有敌人通用）=====
+    if (this.itemCd <= 0 && this._maybeUseItem()) {
+      this.itemCd = 3 + Math.floor(Math.random() * 2);
+      return this._lastItemAction;
+    }
+    this.itemCd = Math.max(0, this.itemCd - 1);
+    
+    // ===== 盛丽文3次隐身 =====
+    if (this.stealthCharges > 0) {
+      const u = this.unit;
+      const hpRatio = u.hp / u.maxHp;
+      // HP低于70%、40%时使用隐身
+      if ((hpRatio < 0.70 && this.stealthCharges === 3) ||
+          (hpRatio < 0.40 && this.stealthCharges === 2) ||
+          (hpRatio < 0.20 && this.stealthCharges === 1)) {
+        this.stealthCharges--;
+        return { type: 'enemy_stealth', quote: '消失吧！' };
+      }
+    }
+    
     switch (this.bossId) {
       case 'jin': return this._jinDecide();
       case 'han': return this._hanDecide();
@@ -126,7 +162,50 @@ export class BossAI {
     }
   }
 
-  // ===== 金老师 AI =====
+  // ===== 怪物道具决策 =====
+  _maybeUseItem() {
+    const u = this.unit;
+    if (!u) return false;
+    const hpRatio = u.hp / u.maxHp;
+    const r = Math.random();
+    
+    // 低血时优先治疗/护盾
+    if (hpRatio < 0.35 && r < 0.45) {
+      this._lastItemAction = { type: 'enemy_item', itemId: 'teacher_snack', quote: '补一口…' };
+      return true;
+    }
+    if (hpRatio < 0.55 && r < 0.25) {
+      this._lastItemAction = { type: 'enemy_item', itemId: 'not_our_class', quote: '防御！' };
+      return true;
+    }
+    // 中等概率使用增益
+    if (r < 0.15) {
+      this._lastItemAction = { type: 'enemy_item', itemId: 'what_doing', quote: '冲冲冲！' };
+      return true;
+    }
+    // 偶尔隐身
+    if (r < 0.08 && !this._isPlayerStealthed()) {
+      this._lastItemAction = { type: 'enemy_item', itemId: 'leave', quote: '看不到我…' };
+      return true;
+    }
+    // 偶尔位移
+    if (r < 0.05) {
+      this._lastItemAction = { type: 'enemy_item', itemId: 'kite', quote: '闪！' };
+      return true;
+    }
+    return false;
+  }
+
+  tickCooldowns() {
+    if (this.bossId === 'jin') {
+      this.rollCallCd--; this.dragClassCd--;
+    } else if (this.bossId === 'han') {
+      this.quizCd--;
+    } else if (this.bossId === 'wu') {
+      this.homeworkCd--; this.disciplineCd--;
+    }
+  }
+
   _jinDecide() {
     const boss = this.unit;
     const hpRatio = boss.hp / boss.maxHp;
@@ -147,17 +226,11 @@ export class BossAI {
       this.rollCallWarning = true;
       return { type: 'roll_call_warning', quote: '（举起了包着「大富贵」书皮的英语书…）' };
     }
-    return { type: 'normal_shot' };
-  }
-
-  tickCooldowns() {
-    if (this.bossId === 'jin') {
-      this.rollCallCd--; this.dragClassCd--;
-    } else if (this.bossId === 'han') {
-      this.quizCd--;
-    } else if (this.bossId === 'wu') {
-      this.homeworkCd--; this.disciplineCd--;
+    // 增强：低血时双射
+    if (hpRatio < 0.5 && this.turnCount % 2 === 0) {
+      return { type: 'double_shot', quote: '', damageMul: 1.3 };
     }
+    return { type: 'normal_shot' };
   }
 
   _hanDecide() {
@@ -171,6 +244,10 @@ export class BossAI {
       const interval = this._isWeakpointAlive('papers') ? Math.max(1, this.boss.quizInterval - 1) : this.boss.quizInterval;
       this.quizCd = interval;
       return { type: 'quiz', quote: '口答！' };
+    }
+    // 增强：每3回合三连射
+    if (this.turnCount % 3 === 0 && this.turnCount > 0) {
+      return { type: 'triple_shot', quote: '', damageMul: 1.2 };
     }
     return { type: 'normal_shot' };
   }
@@ -192,6 +269,10 @@ export class BossAI {
       this.homeworkCd = Math.max(1, this.boss.homeworkInterval - 1);
       return { type: 'homework', quote: (this.boss.quotes && this.boss.quotes.confiscate) || '作业没收！' };
     }
+    // 增强：沉默射击
+    if (this.turnCount % 4 === 0 && this.turnCount > 0) {
+      return { type: 'silence_shot', quote: '安静！', damageMul: 1.1 };
+    }
     return { type: 'normal_shot' };
   }
 
@@ -205,6 +286,10 @@ export class BossAI {
     }
     if (this.turnCount % 2 === 0) {
       return { type: 'sketch_burst', quote: '', damageMul };
+    }
+    // 增强：低血时散弹
+    if (hpRatio < 0.4 && this.turnCount % 2 === 1) {
+      return { type: 'scatter_shot', quote: '', damageMul: 1.3 };
     }
     return { type: 'normal_shot', quote: this.turnCount === 1 ? (u.quotes?.intro || '') : '', damageMul };
   }
@@ -220,10 +305,14 @@ export class BossAI {
     if (this.turnCount % 2 === 0) {
       return { type: 'sprint_charge', quote: '', damageMul };
     }
+    // 增强：低血时连续重击
+    if (hpRatio < 0.4) {
+      return { type: 'heavy_shot', quote: '', damageMul: 1.5 };
+    }
     return { type: 'normal_shot', quote: this.turnCount === 1 ? (u.quotes?.intro || '') : '', damageMul };
   }
 
-  // ===== 学生 AI（学科线）— 基于射击偏好和技能偏好 =====
+  // ===== 学生 AI — 基于射击偏好和技能偏好（增强版）=====
   _studentDecide() {
     const u = this.unit;
     const mech = u.mechanics || [];
@@ -231,7 +320,7 @@ export class BossAI {
     let damageMul = 1;
 
     // 低血狂暴
-    if (mech.includes('buff_low_hp') && hpRatio <= 0.65) {
+    if (hpRatio <= 0.65) {
       damageMul = 2.0;
       u.buffMul = 2.0;
     } else {
@@ -245,33 +334,41 @@ export class BossAI {
     switch (pref) {
       case 'rapid':
         // 连发：优先多发射击
-        if (mech.includes('double_shot') && tc % 2 === 0) {
+        if (tc % 3 === 0 && tc > 0) {
           return { type: 'triple_shot', quote: u.quote || '', damageMul };
         }
         if (tc % 2 === 0) {
           return { type: 'double_shot', quote: u.quote || '', damageMul };
+        }
+        // 增强：偶尔散弹
+        if (tc % 5 === 0 && tc > 0) {
+          return { type: 'scatter_shot', quote: u.quote || '', damageMul };
         }
         break;
 
       case 'heavy':
         // 高伤：优先高伤射击
         if (tc % 3 === 0 && tc > 0) {
-          return { type: 'heavy_shot', quote: u.quote || '', damageMul };
+          return { type: 'heavy_shot', quote: u.quote || '', damageMul: damageMul * 1.2 };
         }
-        if (mech.includes('double_shot') && tc % 2 === 0) {
+        if (tc % 2 === 0) {
           return { type: 'double_shot', quote: u.quote || '', damageMul };
+        }
+        // 增强：低血时更激进
+        if (hpRatio < 0.4 && tc % 2 === 1) {
+          return { type: 'heavy_shot', quote: u.quote || '', damageMul: damageMul * 1.5 };
         }
         break;
 
       case 'annoy':
-        // 恶心：击退/换位/番茄炒蛋
-        if (tc % 3 === 0 && tc > 0) {
+        // 恶心：击退/换位/番茄炒蛋/沉默
+        if (tc % 4 === 0 && tc > 0) {
           return { type: 'knockback_shot', quote: u.quote || '', damageMul };
         }
-        if (tc % 2 === 0) {
+        if (tc % 3 === 0 && tc > 0) {
           return { type: 'swap_shot', quote: u.quote || '', damageMul };
         }
-        if (mech.includes('silence_shot') && tc % 4 === 0) {
+        if (tc % 2 === 0) {
           return { type: 'silence_shot', quote: u.quote || '', damageMul };
         }
         break;
@@ -281,8 +378,12 @@ export class BossAI {
         if (tc % 2 === 0) {
           return { type: 'scatter_shot', quote: u.quote || '', damageMul };
         }
-        if (mech.includes('silence_shot') && tc % 3 === 0) {
+        if (tc % 4 === 0 && tc > 0) {
           return { type: 'silence_shot', quote: u.quote || '', damageMul };
+        }
+        // 增强：低血时三连
+        if (hpRatio < 0.4 && tc % 3 === 0) {
+          return { type: 'triple_shot', quote: u.quote || '', damageMul: 1.3 };
         }
         break;
 
@@ -291,23 +392,26 @@ export class BossAI {
         if (hpRatio <= 0.5 && tc % 3 === 0) {
           return { type: 'heal_self', quote: u.quote || '' };
         }
-        if (mech.includes('shield_self') && tc % 2 === 0) {
+        if (tc % 2 === 0) {
           return { type: 'shield_self', quote: u.quote || '' };
         }
-        if (tc % 2 === 0) {
+        // 增强：给队友治疗（双课代表关）
+        if (this.battle.bossTwin && !this.battle.bossTwin.dead && this.battle.bossTwin.hp / this.battle.bossTwin.maxHp < 0.5 && tc % 4 === 0) {
+          return { type: 'heal_ally', quote: '撑住！' };
+        }
+        if (tc % 3 === 0 && tc > 0) {
           return { type: 'double_shot', quote: u.quote || '', damageMul };
         }
         break;
 
       default:
-        // normal
-        if (mech.includes('shield_self') && tc % 2 === 0) {
+        if (tc % 2 === 0) {
           return { type: 'shield_self', quote: u.quote || '' };
         }
-        if (mech.includes('double_shot') && tc % 2 === 0) {
+        if (tc % 3 === 0 && tc > 0) {
           return { type: 'double_shot', quote: u.quote || '', damageMul };
         }
-        if (mech.includes('silence_shot') && tc % 3 === 0) {
+        if (tc % 4 === 0 && tc > 0) {
           return { type: 'silence_shot', quote: u.quote || '', damageMul };
         }
         break;
