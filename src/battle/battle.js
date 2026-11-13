@@ -171,17 +171,10 @@ export class BattleScene {
     const factory = TERRAIN_FACTORIES[terrainKey] || TERRAIN_FACTORIES.pe || (() => []);
     this.terrain = factory();
 
-    // --- 可破坏地面分段（半球形坑）---
-    const segW = 40;
-    const segCount = Math.ceil(CONFIG.WIDTH / segW);
-    this.groundSegments = [];
-    for (let i = 0; i < segCount; i++) {
-      this.groundSegments.push({
-        x: i * segW, w: segW,
-        destroyed: false,
-        craterDepth: 0, // 0=完好，>0=半球形坑深
-      });
-    }
+    // --- 可破坏地面高度图（点拼成，圆形弹坑）---
+    this.groundHeightmap = new Float32Array(CONFIG.WIDTH);
+    this.groundHeightmap.fill(CONFIG.GROUND_Y);
+    this.GROUND_MAX_DEPTH = 200; // 最大坑深
 
     // --- 可破坏悬空平台（分段制，和地面一样打坑）---
     const terrainKey2 = this.isStage ? (this.stageCfg.subject || 'pe') : this.bossId;
@@ -877,13 +870,11 @@ export class BattleScene {
     this._checkGroundFall(p);
   }
 
-  // 获取某 x 位置的有效地面 Y（用于阴影绘制和碰撞）
+  // 获取某 x 位置的有效地面 Y（高度图查询）
   _groundYAt(x) {
-    const segIdx = Math.floor(x / 40);
-    if (this.groundSegments && this.groundSegments[segIdx] && this.groundSegments[segIdx].destroyed) {
-      return CONFIG.GROUND_Y + (this.groundSegments[segIdx].craterDepth || 0); // 坑底
-    }
-    return CONFIG.GROUND_Y;
+    if (!this.groundHeightmap) return CONFIG.GROUND_Y;
+    const xi = Math.max(0, Math.min(CONFIG.WIDTH - 1, Math.floor(x)));
+    return this.groundHeightmap[xi];
   }
 
   // 风筝飞行动画更新
@@ -925,18 +916,15 @@ export class BattleScene {
     }
   }
 
-  // 检查单位是否站在被破坏的地面段上方（掉入坑底，不直通地心）
+  // 检查单位是否站在坑上方（掉入坑底，不直通地心）
   _checkGroundFall(unit) {
     if (unit.dead || unit.falling) return;
-    const segIdx = Math.floor(unit.x / 40);
-    const seg = this.groundSegments[segIdx];
-    if (seg && seg.destroyed && seg.craterDepth > 0) {
-      // 单位比坑深宽 → 掉入坑底
-      if (seg.craterDepth > 20 && unit.radius > seg.w / 2) {
-        unit.falling = true;
-        unit.fallVy = 0;
-        unit.fallTargetY = CONFIG.GROUND_Y + seg.craterDepth - unit.radius; // 坑底
-      }
+    const groundY = this._groundYAt(unit.x);
+    if (groundY > CONFIG.GROUND_Y + 25) {
+      // 坑够深 → 掉入坑底
+      unit.falling = true;
+      unit.fallVy = 0;
+      unit.fallTargetY = groundY - unit.radius;
     }
   }
 
@@ -1210,22 +1198,19 @@ export class BattleScene {
       }
       if (!proj.alive) continue;
 
-      // 平台分段碰撞（半球形坑）
+      // 平台高度图碰撞（圆形弹坑）
       const platHit = checkPlatformHit(proj.x, proj.y, proj.radius, this.platforms);
       if (platHit) {
-        // 半球形坑：中心段最深，左右递减
-        const seg = platHit.seg;
         const plat = platHit.platform;
-        const idx = platHit.segIdx;
-        const craterMaxDepth = seg.h * 0.8; // 坑深不超过平台高度的80%
-        const craterRadius = 2;
-        for (let off = -craterRadius; off <= craterRadius; off++) {
-          const s = plat.segments[idx + off];
-          if (!s) continue;
-          const ratio = Math.cos(Math.abs(off) / craterRadius * Math.PI / 2);
-          const depth = Math.round(craterMaxDepth * ratio);
-          s.craterDepth = Math.max(s.craterDepth, depth);
-          if (s.craterDepth > 0) s.destroyed = true;
+        const cx = platHit.localX; // 平台内局部 x
+        const radius = Math.max(16, proj.radius * 5);
+        const maxDepth = Math.min(plat.h * 0.8, radius * 0.8);
+        for (let dx = -radius; dx <= radius; dx++) {
+          const xi = cx + dx;
+          if (xi < 0 || xi >= plat.width) continue;
+          const ratio = Math.sqrt(Math.max(0, 1 - (dx * dx) / (radius * radius)));
+          const newDepth = plat.y + maxDepth * ratio;
+          plat.heightmap[xi] = Math.max(plat.heightmap[xi], newDepth);
         }
         this.audio.play('destroy');
         this.particles.push(...createHitParticles(proj.x, proj.y, '#8D6E63', 16, 1.8));
@@ -1235,7 +1220,7 @@ export class BattleScene {
       }
 
       // 地形 / 单位碰撞
-      const hit = checkCollision(proj, this.terrain, units, this.groundSegments);
+      const hit = checkCollision(proj, this.terrain, units, this.groundHeightmap);
       if (hit) {
         this._handleHit(proj, hit);
         proj.alive = false;
@@ -1315,28 +1300,23 @@ export class BattleScene {
       }
       this._addShake(3, 0.1);
     } else if (hit.type === 'ground') {
-      // 半球形坑：命中段最深，左右递减
-      const segIdx = Math.floor(proj.x / 40);
-      const seg = this.groundSegments[Math.max(0, Math.min(this.groundSegments.length - 1, segIdx))];
-      if (seg && !seg.destroyed) {
-        // 半球形深度分布：中心最深，左右2段递减
-        const craterMaxDepth = 60; // 中心段坑深
-        const craterRadius = 2; // 左右各影响2段
-        for (let off = -craterRadius; off <= craterRadius; off++) {
-          const s = this.groundSegments[segIdx + off];
-          if (!s) continue;
-          // 半球形：cos(off/radius * π/2) 的深度比例
-          const ratio = Math.cos(Math.abs(off) / craterRadius * Math.PI / 2);
-          const depth = Math.round(craterMaxDepth * ratio);
-          s.craterDepth = Math.max(s.craterDepth, depth);
-          if (s.craterDepth > 0) s.destroyed = true;
-        }
-        this.audio.play('destroy');
-        this.particles.push(...createHitParticles(proj.x, CONFIG.GROUND_Y, CONFIG.COLORS.groundDark || '#6B5B3F', 28, 2.5));
-        this._addShake(10, 0.3);
-        this._checkGroundFall(this.player);
-        for (const b of this.bossList) this._checkGroundFall(b);
+      // 圆形弹坑：在高度图上挖半球形坑
+      const cx = Math.floor(proj.x);
+      const radius = Math.max(20, proj.radius * 5); // 弹坑半径
+      const maxDepth = Math.min(this.GROUND_MAX_DEPTH, radius * 0.8); // 坑深
+      for (let dx = -radius; dx <= radius; dx++) {
+        const xi = cx + dx;
+        if (xi < 0 || xi >= CONFIG.WIDTH) continue;
+        const ratio = Math.sqrt(Math.max(0, 1 - (dx * dx) / (radius * radius))); // 0~1 半球
+        const newDepth = CONFIG.GROUND_Y + maxDepth * ratio;
+        this.groundHeightmap[xi] = Math.max(this.groundHeightmap[xi], newDepth);
       }
+      this.audio.play('destroy');
+      this.particles.push(...createHitParticles(proj.x, CONFIG.GROUND_Y, CONFIG.COLORS?.groundDark || '#6D4C41', 14, 1.6));
+      this._addShake(4, 0.15);
+      proj.alive = false;
+      this._checkGroundFall(this.player);
+      for (const b of this.bossList) this._checkGroundFall(b);
       const decal = createDecal(proj.x, CONFIG.GROUND_Y, 'ground');
       this.decals.push(decal);
     } else if (hit.type === 'unit') {
@@ -2734,122 +2714,81 @@ export class BattleScene {
     // ===== 学科特色背景装饰（夸张化）=====
     this._renderSubjectDecor(ctx, gy);
 
-    // 地面渲染（半球形坑：破坏段渲染为凹陷曲面，不直通地心）
-    const groundThickness = CONFIG.HEIGHT - gy;
-    for (const seg of this.groundSegments) {
-      if (seg.destroyed && seg.craterDepth > 0) {
-        // 破坏段：渲染坑底（从坑底到画布底部）
-        const craterBottom = gy + seg.craterDepth;
-        ctx.fillStyle = '#5D4037';
-        ctx.fillRect(seg.x, craterBottom, seg.w, 4);
-        const groundGrad = ctx.createLinearGradient(0, craterBottom, 0, CONFIG.HEIGHT);
-        groundGrad.addColorStop(0, '#6D4C41');
-        groundGrad.addColorStop(0.3, '#5D4037');
-        groundGrad.addColorStop(1, '#3E2723');
-        ctx.fillStyle = groundGrad;
-        ctx.fillRect(seg.x, craterBottom + 4, seg.w, CONFIG.HEIGHT - craterBottom - 4);
-        continue;
+    // 地面渲染（高度图：平滑曲线，圆形弹坑）
+    const hm = this.groundHeightmap;
+    if (hm) {
+      // 填充地面体
+      ctx.beginPath();
+      ctx.moveTo(0, CONFIG.HEIGHT);
+      ctx.lineTo(0, hm[0]);
+      for (let x = 1; x < CONFIG.WIDTH; x++) {
+        ctx.lineTo(x, hm[x]);
       }
-      if (seg.destroyed) continue;
-      // 完好段
-      ctx.fillStyle = '#5D4037';
-      ctx.fillRect(seg.x, gy, seg.w, 6);
+      ctx.lineTo(CONFIG.WIDTH, CONFIG.HEIGHT);
+      ctx.closePath();
       const groundGrad = ctx.createLinearGradient(0, gy, 0, CONFIG.HEIGHT);
       groundGrad.addColorStop(0, '#6D4C41');
       groundGrad.addColorStop(0.3, '#5D4037');
       groundGrad.addColorStop(1, '#3E2723');
       ctx.fillStyle = groundGrad;
-      ctx.fillRect(seg.x, gy + 6, seg.w, groundThickness - 6);
-    }
-    // 坑壁渲染（半球形边缘）
-    for (let i = 0; i < this.groundSegments.length; i++) {
-      const seg = this.groundSegments[i];
-      if (!seg.destroyed || seg.craterDepth <= 0) continue;
-      const prev = this.groundSegments[i - 1];
-      const next = this.groundSegments[i + 1];
-      const segBottom = gy + seg.craterDepth;
-      // 左侧坑壁（如果左边比当前浅或完好）
-      if (prev && (!prev.destroyed || (prev.craterDepth || 0) < seg.craterDepth)) {
-        const prevBottom = prev.destroyed ? (gy + (prev.craterDepth || 0)) : gy;
-        ctx.fillStyle = '#3E2723';
-        ctx.fillRect(seg.x, prevBottom, 3, segBottom - prevBottom);
-      }
-      // 右侧坑壁
-      if (next && (!next.destroyed || (next.craterDepth || 0) < seg.craterDepth)) {
-        const nextBottom = next.destroyed ? (gy + (next.craterDepth || 0)) : gy;
-        ctx.fillStyle = '#3E2723';
-        ctx.fillRect(seg.x + seg.w - 3, nextBottom, 3, segBottom - nextBottom);
-      }
-    }
-    // 地面瓷砖纹理线
-    ctx.strokeStyle = 'rgba(0,0,0,0.06)';
-    ctx.lineWidth = 1;
-    for (const seg of this.groundSegments) {
-      if (seg.destroyed) continue;
+      ctx.fill();
+      // 地面表面线
+      ctx.strokeStyle = '#8D6E63';
+      ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.moveTo(seg.x, gy);
-      ctx.lineTo(seg.x, CONFIG.HEIGHT);
+      ctx.moveTo(0, hm[0]);
+      for (let x = 1; x < CONFIG.WIDTH; x++) {
+        ctx.lineTo(x, hm[x]);
+      }
       ctx.stroke();
+      // 纹理横线
+      ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+      ctx.lineWidth = 1;
       for (let yy = gy + 30; yy < CONFIG.HEIGHT; yy += 35) {
         ctx.beginPath();
-        ctx.moveTo(seg.x, yy);
-        ctx.lineTo(seg.x + seg.w, yy);
+        ctx.moveTo(0, yy);
+        ctx.lineTo(CONFIG.WIDTH, yy);
         ctx.stroke();
       }
     }
 
-    // ===== 悬空平台渲染（半球形坑）=====
+    // ===== 悬空平台渲染（高度图：平滑曲线，圆形弹坑）=====
     for (const plat of this.platforms) {
-      for (const seg of plat.segments) {
-        if (seg.destroyed && seg.craterDepth > 0) {
-          // 坑底段：从坑底渲染到段底
-          const craterBottom = seg.y + seg.craterDepth;
-          ctx.fillStyle = 'rgba(255,255,255,0.1)';
-          ctx.fillRect(seg.x, craterBottom, seg.w, 2);
-          const platGrad = ctx.createLinearGradient(0, craterBottom, 0, seg.y + seg.h);
-          platGrad.addColorStop(0, '#8D6E63');
-          platGrad.addColorStop(1, '#5D4037');
-          ctx.fillStyle = platGrad;
-          ctx.fillRect(seg.x, craterBottom + 2, seg.w, seg.y + seg.h - craterBottom - 2);
-          ctx.fillStyle = 'rgba(0,0,0,0.2)';
-          ctx.fillRect(seg.x, seg.y + seg.h - 3, seg.w, 3);
-          ctx.strokeStyle = '#3E2723';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(seg.x, craterBottom, seg.w, seg.y + seg.h - craterBottom);
-          continue;
-        }
-        if (seg.destroyed) continue;
-        // 完好段
-        ctx.fillStyle = 'rgba(255,255,255,0.15)';
-        ctx.fillRect(seg.x, seg.y, seg.w, 3);
-        const platGrad = ctx.createLinearGradient(0, seg.y, 0, seg.y + seg.h);
-        platGrad.addColorStop(0, '#8D6E63');
-        platGrad.addColorStop(1, '#5D4037');
-        ctx.fillStyle = platGrad;
-        ctx.fillRect(seg.x, seg.y + 3, seg.w, seg.h - 3);
-        ctx.fillStyle = 'rgba(0,0,0,0.2)';
-        ctx.fillRect(seg.x, seg.y + seg.h - 3, seg.w, 3);
-        ctx.strokeStyle = '#3E2723';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(seg.x, seg.y, seg.w, seg.h);
+      const phm = plat.heightmap;
+      if (!phm) continue;
+      const pw = plat.width;
+      const px0 = plat.x;
+      const py0 = plat.y;
+      const ph = plat.h;
+      // 填充平台体
+      ctx.beginPath();
+      ctx.moveTo(px0, py0 + ph);
+      ctx.lineTo(px0, phm[0]);
+      for (let x = 1; x < pw; x++) {
+        ctx.lineTo(px0 + x, phm[x]);
       }
-      // 坑壁渲染
-      for (let i = 0; i < plat.segments.length; i++) {
-        const seg = plat.segments[i];
-        if (!seg.destroyed || seg.craterDepth <= 0) continue;
-        const prev = plat.segments[i - 1];
-        const next = plat.segments[i + 1];
-        const segTop = seg.y + seg.craterDepth;
-        ctx.fillStyle = '#3E2723';
-        if (prev && (!prev.destroyed || (prev.craterDepth || 0) < seg.craterDepth)) {
-          const prevTop = prev.destroyed ? (prev.y + (prev.craterDepth || 0)) : prev.y;
-          ctx.fillRect(seg.x, prevTop, 2, segTop - prevTop);
-        }
-        if (next && (!next.destroyed || (next.craterDepth || 0) < seg.craterDepth)) {
-          const nextTop = next.destroyed ? (next.y + (next.craterDepth || 0)) : next.y;
-          ctx.fillRect(seg.x + seg.w - 2, nextTop, 2, segTop - nextTop);
-        }
+      ctx.lineTo(px0 + pw, py0 + ph);
+      ctx.closePath();
+      const platGrad = ctx.createLinearGradient(0, py0, 0, py0 + ph);
+      platGrad.addColorStop(0, '#8D6E63');
+      platGrad.addColorStop(1, '#5D4037');
+      ctx.fillStyle = platGrad;
+      ctx.fill();
+      // 平台表面线
+      ctx.strokeStyle = '#A1887F';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(px0, phm[0]);
+      for (let x = 1; x < pw; x++) {
+        ctx.lineTo(px0 + x, phm[x]);
       }
+      ctx.stroke();
+      // 底部阴影
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.fillRect(px0, py0 + ph - 3, pw, 3);
+      ctx.strokeStyle = '#3E2723';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(px0, py0, pw, ph);
     }
   }
   _renderSubjectDecor(ctx, gy) {
@@ -3256,15 +3195,11 @@ export class BattleScene {
       ctx.translate(-x, -y);
     }
 
-    // 阴影（检查地面是否被破坏）
-    const segIdx = Math.max(0, Math.min(this.groundSegments.length - 1, Math.floor(x / 40)));
-    const groundSeg = this.groundSegments[segIdx];
-    if (!groundSeg || !groundSeg.destroyed) {
-      ctx.fillStyle = 'rgba(0,0,0,0.25)';
-      ctx.beginPath();
-      ctx.ellipse(x, this._groundYAt(x), r * 0.8, r * 0.25, 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    // 阴影（高度图地面）
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(x, this._groundYAt(x), r * 0.8, r * 0.25, 0, 0, Math.PI * 2);
+    ctx.fill();
 
     // 身体（Q版圆头，渐变着色）
     const grad = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.2, x, y, r);
@@ -3976,11 +3911,9 @@ export class BattleScene {
       pts.push({ x: px, y: py });
 
       if (py >= CONFIG.GROUND_Y) {
-        // 检查可破坏地面分段
-        const segIdx = Math.max(0, Math.min(this.groundSegments.length - 1, Math.floor(px / 40)));
-        const seg = this.groundSegments[segIdx];
-        if (!seg || !seg.destroyed) { stop = { x: px, y: CONFIG.GROUND_Y }; break; }
-        // 分段被破坏，弹道继续穿过
+        // 检查高度图地面
+        const groundY = this._groundYAt(px);
+        if (py >= groundY) { stop = { x: px, y: groundY }; break; }
       }
       if (px < -40 || px > CONFIG.WIDTH + 40) { stop = { x: px, y: py }; break; }
 
