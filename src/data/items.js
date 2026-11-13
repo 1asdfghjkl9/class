@@ -63,8 +63,8 @@ export const ITEMS = {
   },
   teacher_snack: {
     id: 'teacher_snack', name: '老师奖励的零食', ap: 3,
-    type: 'heal_single', healRatio: 0.30, upgradable: true,
-    desc: '回复 30% 最大生命',
+    type: 'heal_single', healRatio: 0.12, upgradable: true,
+    desc: '回复 12% 最大生命',
     color: '#8BC34A', icon: '食',
     unlock: 'default', // 默认拥有
   },
