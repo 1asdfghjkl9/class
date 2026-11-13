@@ -148,7 +148,7 @@ export class BossAI {
           (hpRatio < 0.40 && this.stealthCharges === 2) ||
           (hpRatio < 0.20 && this.stealthCharges === 1)) {
         this.stealthCharges--;
-        return { type: 'enemy_stealth', quote: '消失吧！' };
+        return { type: 'enemy_stealth', quote: '' };
       }
     }
     
@@ -171,26 +171,26 @@ export class BossAI {
     
     // 低血时优先治疗/护盾
     if (hpRatio < 0.35 && r < 0.45) {
-      this._lastItemAction = { type: 'enemy_item', itemId: 'teacher_snack', quote: '补一口…' };
+      this._lastItemAction = { type: 'enemy_item', itemId: 'teacher_snack', quote: '' };
       return true;
     }
     if (hpRatio < 0.55 && r < 0.25) {
-      this._lastItemAction = { type: 'enemy_item', itemId: 'not_our_class', quote: '防御！' };
+      this._lastItemAction = { type: 'enemy_item', itemId: 'not_our_class', quote: '' };
       return true;
     }
     // 中等概率使用增益
     if (r < 0.15) {
-      this._lastItemAction = { type: 'enemy_item', itemId: 'what_doing', quote: '冲冲冲！' };
+      this._lastItemAction = { type: 'enemy_item', itemId: 'what_doing', quote: '' };
       return true;
     }
     // 偶尔隐身
     if (r < 0.08 && !this._isPlayerStealthed()) {
-      this._lastItemAction = { type: 'enemy_item', itemId: 'leave', quote: '看不到我…' };
+      this._lastItemAction = { type: 'enemy_item', itemId: 'leave', quote: '' };
       return true;
     }
     // 偶尔位移
     if (r < 0.05) {
-      this._lastItemAction = { type: 'enemy_item', itemId: 'kite', quote: '闪！' };
+      this._lastItemAction = { type: 'enemy_item', itemId: 'kite', quote: '' };
       return true;
     }
     return false;
@@ -397,7 +397,7 @@ export class BossAI {
         }
         // 增强：给队友治疗（双课代表关）
         if (this.battle.bossTwin && !this.battle.bossTwin.dead && this.battle.bossTwin.hp / this.battle.bossTwin.maxHp < 0.5 && tc % 4 === 0) {
-          return { type: 'heal_ally', quote: '撑住！' };
+          return { type: 'heal_ally', quote: '' };
         }
         if (tc % 3 === 0 && tc > 0) {
           return { type: 'double_shot', quote: u.quote || '', damageMul };
