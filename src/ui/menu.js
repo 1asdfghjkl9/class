@@ -1028,9 +1028,6 @@ export class MenuScene {
       ctx.fillStyle = unlocked ? '#FFFFFF' : 'rgba(255,255,255,0.3)';
       ctx.font = `bold 24px ${FONT}`;
       ctx.fillText(unlocked ? st.name : '未解锁', cx, y + 176);
-      ctx.fillStyle = unlocked ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.2)';
-      ctx.font = `15px ${FONT}`;
-      ctx.fillText(unlocked ? (st.title || '') : '先通过上一关', cx, y + 204);
 
       // 数值
       if (unlocked) {
