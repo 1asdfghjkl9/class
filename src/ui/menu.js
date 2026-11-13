@@ -9,7 +9,7 @@ import { BOSSES, STUDENT_ENEMIES } from '../data/bosses.js';
 import { SUBJECTS, SUBJECT_ORDER } from '../data/subjects.js';
 import { SKILLS, MAX_EQUIPPED_SKILLS } from '../data/skills.js';
 import { ITEMS, ITEM_POOL } from '../data/items.js';
-import { WEAPONS, WEAPON_POOL } from '../data/weapons.js';
+import { WEAPONS, WEAPON_POOL, fragmentsNeeded } from '../data/weapons.js';
 import { ACHIEVEMENT_LIST } from '../data/achievements.js';
 import { MODIFIER_LIST, getDailyChallenges, getWeeklyChallenge } from '../data/challenges.js';
 import { TALENT_TREES, TALENT_ORDER, tierSpent, canUnlockTier, totalSpentPoints } from '../data/talents.js';
@@ -20,7 +20,7 @@ import {
   skillUpgradePrice, weaponUpgradePrice, itemUpgradePrice,
   buyWeaponPack, upgradeSkill, upgradeWeapon, upgradeItem,
   buyExp, buyFragment, rerollWeapon, unlockTalent, respecTalents,
-  equipSkill, equipWeapon,
+  equipSkill, equipWeapon, equipItem, buyItemFragment, isItemUnlocked,
 } from '../meta/economy.js';
 import { saveData, resetSave, createDefaultSave, expForLevel, loadSave } from '../save.js';
 import { Account } from '../account.js';
@@ -151,6 +151,8 @@ export class MenuScene {
       case 'equipWeapon': this._do(equipWeapon(this.save, arg)); break;
       case 'rerollWeapon': this._do(rerollWeapon(this.save, arg)); break;
       case 'upItem': this._do(upgradeItem(this.save, arg)); break;
+      case 'equipItem': this._do(equipItem(this.save, arg)); break;
+      case 'buyItemFrag': this._doItemFrag(arg); break;
       case 'buyPack': this._buyPack(); break;
       case 'buyExp': this._do(buyExp(this.save)); break;
       case 'buyFrag': this._buyFrag(arg); break;
@@ -189,9 +191,22 @@ export class MenuScene {
     if (!res.ok) { this._toast(res.reason || '金币不足'); return; }
     this._persist();
     const q = CONFIG.QUALITY[res.quality] ? CONFIG.QUALITY[res.quality].name : '';
-    this._toast(res.duplicated
-      ? `${q}色 ${res.weapon.name}（重复，返还 ${res.refund} 金币）`
-      : `抽到 ${q}色 ${res.weapon.name}！`);
+    if (res.duplicated) {
+      this._toast(`${q}色 ${res.weapon.name}（重复，返还 ${res.refund} 金币）`);
+    } else if (res.unlocked) {
+      this._toast(`★ ${q}色 ${res.weapon.name} 解锁！碎片集齐！`);
+    } else {
+      this._toast(`${q}色 ${res.weapon.name} 碎片 ${res.fragments}/${res.need}`);
+    }
+  }
+
+  _doItemFrag(itemId) {
+    const res = buyItemFragment(this.save, itemId);
+    if (!res.ok) { this._toast(res.reason || '操作失败'); return; }
+    this._persist();
+    this._toast(res.unlocked
+      ? `${ITEMS[itemId].name} 解锁！`
+      : `${ITEMS[itemId].name} 碎片 ${res.fragments}/${res.need}`);
   }
 
   _buyFrag(skillId) {
@@ -1146,16 +1161,16 @@ export class MenuScene {
 
   _shopWeapons(ctx) {
     const s = this.save;
-    // 抽卡按钮
+    // 盲盒抽卡按钮
     this._card(ctx, 100, 180, W - 200, 82, { fill: 'rgba(255,214,102,0.08)', stroke: 'rgba(255,214,102,0.35)' });
     ctx.fillStyle = '#FFFFFF';
     ctx.font = `bold 20px ${FONT}`;
-    ctx.fillText('武器包', 128, 212);
+    ctx.fillText('武器盲盒', 128, 212);
     ctx.fillStyle = 'rgba(255,255,255,0.5)';
     ctx.font = `13px ${FONT}`;
-    ctx.fillText('绿 60% / 蓝 25% / 紫 12% / 金 3% · 重复返还一半金币', 128, 240);
-    this._button(ctx, W - 380, 196, 240, 50, `抽一把 ${CONFIG.PRICES.weaponPack} 金币`, 'buyPack', {
-      color: '#FFD666', size: 17, disabled: s.coins < CONFIG.PRICES.weaponPack,
+    ctx.fillText('绿 55% / 蓝 25% / 紫 12% / 粉 6% / 金 2% · 开出碎片集齐解锁', 128, 240);
+    this._button(ctx, W - 380, 196, 240, 50, `开盲盒 ${CONFIG.PRICES.weaponBlindBox} 金币`, 'buyPack', {
+      color: '#FFD666', size: 17, disabled: s.coins < CONFIG.PRICES.weaponBlindBox,
     });
 
     const ids = WEAPON_POOL;
@@ -1171,6 +1186,7 @@ export class MenuScene {
       const y = y0 + Math.floor(i / 3) * (ch + gy);
       const equipped = s.weapons.equipped === id;
       const q = CONFIG.QUALITY[w.quality] || { name: '?', color: '#888' };
+      const frag = (s.weapons.fragments && s.weapons.fragments[id]) || 0;
 
       this._card(ctx, x, y, cw, ch, {
         fill: inst ? hexA(q.color, 0.09) : 'rgba(255,255,255,0.025)',
@@ -1218,20 +1234,32 @@ export class MenuScene {
         this._button(ctx, bx - bw - 8, by, bw, bh, inst.level >= 5 ? '满级' : `升级 ${weaponUpgradePrice(inst.level)}`, 'upWeapon:' + id, {
           size: 12, disabled: inst.level >= 5 || s.coins < weaponUpgradePrice(inst.level),
         });
-        this._button(ctx, bx - bw * 2 - 16, by, bw, bh, `洗练 ${CONFIG.PRICES.rerollCard}`, 'rerollWeapon:' + id, {
+        this._button(ctx, bx - bw * 2 - 16, by, bw, bh, `重铸 ${CONFIG.PRICES.rerollCard}`, 'rerollWeapon:' + id, {
           size: 12, color: '#BA68C8', disabled: s.coins < CONFIG.PRICES.rerollCard,
         });
       } else {
-        ctx.fillStyle = 'rgba(255,255,255,0.28)';
+        // 未拥有：显示碎片进度
+        const need = fragmentsNeeded(id);
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
         ctx.font = `13px ${FONT}`;
-        ctx.fillText('未拥有 · 通过武器包获取', x + 76, y + 92);
+        ctx.fillText(`碎片 ${frag}/${need}`, x + 76, y + 82);
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.font = `12px ${FONT}`;
+        ctx.fillText('开盲盒获取碎片', x + 76, y + 104);
+        // 进度条
+        const barW = cw - 120, barH = 8;
+        const barX = x + 76, barY = y + 124;
+        ctx.fillStyle = 'rgba(255,255,255,0.1)';
+        ctx.fillRect(barX, barY, barW, barH);
+        ctx.fillStyle = q.color;
+        ctx.fillRect(barX, barY, barW * Math.min(1, frag / need), barH);
       }
     }
   }
 
   _shopItems(ctx) {
     const s = this.save;
-    const cw = 480, ch = 132, gx = 20, gy = 14;
+    const cw = 480, ch = 148, gx = 20, gy = 14;
     const startX = (W - (cw * 3 + gx * 2)) / 2;
     const y0 = 186;
 
@@ -1242,26 +1270,68 @@ export class MenuScene {
       const y = y0 + Math.floor(i / 3) * (ch + gy);
       const lv = s.itemLevels[id] || 1;
       const maxed = it.upgradable === false || lv >= 5;
+      const unlocked = isItemUnlocked(s, id);
+      const equipped = (s.equipped.items || []).includes(id);
+      const frag = (s.itemFragments && s.itemFragments[id]) || 0;
+      const need = it.fragments || 8;
 
-      this._card(ctx, x, y, cw, ch, { fill: hexA(it.color, 0.07), stroke: hexA(it.color, 0.3) });
-      this._icon(ctx, x + 42, y + 44, 24, it.icon, it.color);
+      this._card(ctx, x, y, cw, ch, {
+        fill: unlocked ? hexA(it.color, 0.07) : 'rgba(255,255,255,0.025)',
+        stroke: equipped ? '#FFD666' : unlocked ? hexA(it.color, 0.3) : 'rgba(255,255,255,0.08)',
+        lw: equipped ? 2.5 : 1.5,
+      });
+      this._icon(ctx, x + 42, y + 44, 24, it.icon, unlocked ? it.color : '#666');
 
-      ctx.fillStyle = '#FFFFFF';
+      ctx.fillStyle = unlocked ? '#FFFFFF' : 'rgba(255,255,255,0.35)';
       ctx.font = `bold 19px ${FONT}`;
       ctx.fillText(it.name, x + 76, y + 38);
       ctx.fillStyle = 'rgba(255,255,255,0.45)';
       ctx.font = `13px ${FONT}`;
       ctx.fillText(fit(ctx, it.desc || '', cw - 100, 13), x + 76, y + 62);
-      ctx.fillStyle = 'rgba(255,255,255,0.55)';
-      ctx.font = `13px ${FONT}`;
-      ctx.fillText(it.upgradable === false ? `${it.ap}AP · 不可升级` : `${it.ap}AP · Lv.${lv}/5`, x + 76, y + 88);
 
-      const bw = 130, bh = 34, bx = x + cw - bw - 16, by = y + ch - bh - 14;
-      if (maxed) {
-        this._button(ctx, bx, by, bw, bh, '已满级', 'noop', { size: 14, disabled: true });
+      if (unlocked) {
+        ctx.fillStyle = 'rgba(255,255,255,0.55)';
+        ctx.font = `13px ${FONT}`;
+        ctx.fillText(it.upgradable === false ? `${it.ap}AP · 不可升级` : `${it.ap}AP · Lv.${lv}/5`, x + 76, y + 88);
+
+        if (equipped) {
+          ctx.textAlign = 'right';
+          ctx.fillStyle = '#FFD666';
+          ctx.font = `bold 13px ${FONT}`;
+          ctx.fillText('已装备', x + cw - 18, y + 30);
+          ctx.textAlign = 'left';
+        }
+
+        const bw = 100, bh = 32;
+        const bx = x + cw - bw - 14, by = y + ch - bh - 12;
+        // 装备/卸下
+        this._button(ctx, bx, by, bw, bh, equipped ? '卸下' : '装备', 'equipItem:' + id, {
+          size: 13, color: equipped ? '#FF6B6B' : '#4ECDC4',
+        });
+        // 升级
+        if (!maxed) {
+          this._button(ctx, bx - bw - 8, by, bw, bh, `升级 ${itemUpgradePrice(lv)}`, 'upItem:' + id, {
+            size: 12, disabled: s.coins < itemUpgradePrice(lv),
+          });
+        }
       } else {
-        this._button(ctx, bx, by, bw, bh, `升级 ${itemUpgradePrice(lv)}`, 'upItem:' + id, {
-          size: 14, disabled: s.coins < itemUpgradePrice(lv),
+        // 未解锁：显示碎片进度
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.font = `13px ${FONT}`;
+        ctx.fillText(`碎片 ${frag}/${need}`, x + 76, y + 88);
+
+        // 进度条
+        const barW = cw - 200, barH = 6;
+        const barX = x + 76, barY = y + 104;
+        ctx.fillStyle = 'rgba(255,255,255,0.1)';
+        ctx.fillRect(barX, barY, barW, barH);
+        ctx.fillStyle = it.color;
+        ctx.fillRect(barX, barY, barW * Math.min(1, frag / need), barH);
+
+        const bw = 140, bh = 32;
+        const bx = x + cw - bw - 14, by = y + ch - bh - 12;
+        this._button(ctx, bx, by, bw, bh, `买碎片 ${CONFIG.PRICES.itemFragment}`, 'buyItemFrag:' + id, {
+          size: 12, color: '#FFD666', disabled: s.coins < CONFIG.PRICES.itemFragment,
         });
       }
     }
