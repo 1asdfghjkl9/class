@@ -1,5 +1,5 @@
 // ============================================================
-// config.js — 全局可调参数表
+// config.js — 全局可调参数表（v3：数值×100，新增盲盒/粉色品质）
 // ============================================================
 
 export const CONFIG = {
@@ -34,15 +34,15 @@ export const CONFIG = {
   AP_PER_TURN: 3,
   NORMAL_SHOT_AP: 0,
   STANDBY_BONUS_AP: 3,
-  BOSS_AP_PER_TURN: 3, // 敌方每回合回复3AP
+  BOSS_AP_PER_TURN: 3,
 
-  // ---------- 玩家 ----------
-  PLAYER_HP: 140,
-  PLAYER_MAX_HP: 140,
+  // ---------- 玩家（×100）----------
+  PLAYER_HP: 14000,
+  PLAYER_MAX_HP: 14000,
   PLAYER_X: 200,
   PLAYER_RADIUS: 28,
   PLAYER_MOVE_SPEED: 150,
-  PLAYER_MOVE_MAX: 200, // 每回合最多移动200px
+  PLAYER_MOVE_MAX: 200,
 
   // ---------- 暴击 ----------
   BASE_CRIT: 0.15,
@@ -72,21 +72,21 @@ export const CONFIG = {
   GROUND_HP: 50,
   MAX_DECALS: 200,
 
-  // ---------- 金老师 ----------
-  BOSS_HP: 400,
+  // ---------- 金老师（×100）----------
+  BOSS_HP: 40000,
   BOSS_DR: 0.10,
   BOSS_PATROL_MIN: 850,
   BOSS_PATROL_MAX: 1150,
   BOSS_PATROL_SPEED: 38,
   BOSS_RADIUS: 36,
   BOSS_ENRAGE_THRESHOLD: 0.20,
-  MINION_HP: 40,
+  MINION_HP: 4000,
   MINION_RADIUS: 24,
-  WEAKPOINT_PENBAG_HP: 30,
-  WEAKPOINT_BOOK_HP: 40,
+  WEAKPOINT_PENBAG_HP: 3000,
+  WEAKPOINT_BOOK_HP: 4000,
 
-  // ---------- 韩老师 ----------
-  BOSS_HAN_HP: 380,
+  // ---------- 韩老师（×100）----------
+  BOSS_HAN_HP: 38000,
   BOSS_HAN_SPEED: 19,
   BOSS_HAN_DR: 0.08,
   BOSS_HAN_RADIUS: 36,
@@ -98,12 +98,12 @@ export const CONFIG = {
   BOSS_HAN_RAGE_THRESHOLD: 0.50,
   BOSS_HAN_PAPER_COUNT: 6,
   BOSS_HAN_AIM_ERROR: 35,
-  BOSS_HAN_SHOT_DAMAGE: 16,
+  BOSS_HAN_SHOT_DAMAGE: 1600,
   BOSS_HAN_SHOT_SPEED: 620,
   BOSS_HAN_X: 1050,
 
-  // ---------- 吴老师 ----------
-  BOSS_WU_HP: 360,
+  // ---------- 吴老师（×100）----------
+  BOSS_WU_HP: 36000,
   BOSS_WU_SPEED: 20,
   BOSS_WU_DR: 0.12,
   BOSS_WU_RADIUS: 34,
@@ -111,9 +111,9 @@ export const CONFIG = {
   BOSS_WU_DISCIPLINE_INTERVAL: 3,
   BOSS_WU_DISCIPLINE_INTERVAL_BROKEN: 5,
   BOSS_WU_DISCIPLINE_DURATION: 3,
-  BOSS_WU_DISCIPLINE_DAMAGE: 30,
+  BOSS_WU_DISCIPLINE_DAMAGE: 3000,
   BOSS_WU_AIM_ERROR: 30,
-  BOSS_WU_SHOT_DAMAGE: 14,
+  BOSS_WU_SHOT_DAMAGE: 1400,
   BOSS_WU_SHOT_SPEED: 640,
   BOSS_WU_X: 1050,
 
@@ -137,36 +137,49 @@ export const CONFIG = {
   SKILL_MAX_LEVEL: 5,
   WEAPON_MAX_LEVEL: 5,
   ITEM_MAX_LEVEL: 5,
-  SKILL_DMG_MUL_PER_LEVEL: 0.18,   // 每级 +18% 伤害
-  WEAPON_DMG_MUL_PER_LEVEL: 0.15,  // 每级 +15% 伤害
-  ITEM_EFFECT_MUL_PER_LEVEL: 0.20, // 每级 +20% 效果
+  SKILL_DMG_MUL_PER_LEVEL: 0.18,
+  WEAPON_DMG_MUL_PER_LEVEL: 0.15,
+  ITEM_EFFECT_MUL_PER_LEVEL: 0.20,
 
   // ---------- 角色等级 ----------
   LEVEL_MAX: 999,
-  EXP_PER_LEVEL: 100,        // 每级所需积分（线性递增）
-  EXP_GROWTH: 25,            // 每级额外递增
+  EXP_PER_LEVEL: 100,
+  EXP_GROWTH: 25,
   TALENT_POINT_PER_LEVEL: 1,
 
-  // ---------- 商店价格 ----------
+  // ---------- 商店价格（×100）----------
   PRICES: {
-    weaponPack: 200,         // 武器包
-    skillUpgrade: 300,       // 技能升级（基础价，按等级递增）
-    weaponUpgrade: 350,      // 武器升级
-    itemUpgrade: 250,        // 道具升级
-    exp100: 150,             // 100 积分
-    skillFragment: 120,      // 1 个技能碎片
-    rerollCard: 150,         // 改造卡
-    respecTicket: 300,       // 转班申请单
+    weaponBlindBox: 20000,    // 武器盲盒
+    skillUpgrade: 30000,      // 技能升级
+    weaponUpgrade: 35000,     // 武器升级
+    itemUpgrade: 25000,       // 道具升级
+    exp100: 15000,            // 100 积分
+    skillFragment: 12000,     // 1 个技能碎片
+    itemFragment: 10000,      // 1 个道具碎片
+    rerollCard: 15000,        // 奸商的重铸券
+    respecTicket: 30000,      // 转班申请单
   },
 
-  // ---------- 武器包概率 ----------
-  WEAPON_GACHA: { green: 0.60, blue: 0.25, purple: 0.12, gold: 0.03 },
+  // ---------- 盲盒系统 ----------
+  BLINDBOX: {
+    price: 20000,             // 单个盲盒价格
+    bulkPrice: 180000,        // 10连价格（9折）
+    minFragments: 1,          // 最少出碎片数
+    maxFragments: 3,          // 最多出碎片数
+    // 品质概率
+    qualityOdds: { green: 0.50, blue: 0.28, purple: 0.13, pink: 0.07, gold: 0.02 },
+    // 解锁所需碎片数（按品质）
+    fragmentsToUnlock: { green: 5, blue: 10, purple: 20, pink: 35, gold: 50 },
+  },
+
+  // ---------- 武器包概率（旧，保留兼容）----------
+  WEAPON_GACHA: { green: 0.50, blue: 0.28, purple: 0.13, pink: 0.07, gold: 0.02 },
   REROLL_NEGATIVE_CHANCE: 0.15,
 
   // ---------- 怒气大招 ----------
-  ULT_AP_COST: 0,          // 大招不消耗行动力
-  ULT_HEAL_SINGLE: 0.30,   // 单体治疗：30% 最大生命
-  ULT_HEAL_GROUP: 0.22,    // 群体治疗：22% 最大生命（玩家侧等效自身）
+  ULT_AP_COST: 0,
+  ULT_HEAL_SINGLE: 0.30,
+  ULT_HEAL_GROUP: 0.22,
 
   // ---------- 场景互动物 ----------
   INTERACTABLE: {
@@ -207,13 +220,21 @@ export const CONFIG = {
     purple:     '#9C27B0',
     blue:       '#2196F3',
     green:      '#4CAF50',
+    pink:       '#FF69B4',
   },
 
-  // ---------- 品质 ----------
+  // ---------- 品质（新增粉色）----------
   QUALITY: {
-    green:  { name: '绿', color: '#4CAF50', affixes: 0 },
-    blue:   { name: '蓝', color: '#2196F3', affixes: 1 },
-    purple: { name: '紫', color: '#9C27B0', affixes: 2 },
-    gold:   { name: '金', color: '#FFD700', affixes: 3 },
+    green:  { name: '绿', color: '#4CAF50', affixes: 0, order: 0 },
+    blue:   { name: '蓝', color: '#2196F3', affixes: 1, order: 1 },
+    purple: { name: '紫', color: '#9C27B0', affixes: 2, order: 2 },
+    pink:   { name: '粉', color: '#FF69B4', affixes: 3, order: 3 },
+    gold:   { name: '金', color: '#FFD700', affixes: 4, order: 4 },
   },
+  QUALITY_ORDER: ['green', 'blue', 'purple', 'pink', 'gold'],
+
+  // ---------- 道具 ----------
+  ITEM_FRAGMENT_COST: 5,      // 解锁所需碎片数
+  ITEMS_PER_BATTLE: 4,        // 每关自动补齐道具数
+  MAX_EQUIPPED_ITEMS: 4,      // 最多装备道具数
 };
