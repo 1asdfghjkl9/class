@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#0f1320">
+    <title>班级弹射对战</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #0f1320;
+            font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            overscroll-behavior: none;
+            touch-action: none;
+        }
+        #game-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #game-canvas {
+            display: block;
+            background: #0f1320;
+            touch-action: none;
+            max-width: 100%;
+            max-height: 100%;
+            box-shadow: 0 0 60px rgba(0, 0, 0, 0.6);
+        }
+        /* 启动失败提示 */
+        #boot-error {
+            position: fixed;
+            inset: 0;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 18px;
+            background: #0f1320;
+            color: #fff;
+            z-index: 10000;
+            padding: 32px;
+            text-align: center;
+            font-size: 15px;
+            line-height: 1.8;
+        }
+        #boot-error b { color: #FFD666; font-size: 19px; }
+        #boot-error code {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #7EE0FF;
+        }
+        /* 竖屏提示 */
+        #rotate-tip {
+            position: fixed;
+            inset: 0;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 26px;
+            background: #0f1320;
+            color: #fff;
+            z-index: 9999;
+            padding: 32px;
+            text-align: center;
+        }
+        #rotate-tip .phone {
+            width: 92px;
+            height: 156px;
+            border: 4px solid #FFD666;
+            border-radius: 14px;
+            animation: rot 2s ease-in-out infinite;
+        }
+        @keyframes rot {
+            0%, 30% { transform: rotate(0deg); }
+            60%, 100% { transform: rotate(90deg); }
+        }
+        /* JS 未生效时也能提示横屏（纯 CSS 兜底） */
+        @media (orientation: portrait) and (max-width: 900px) {
+            #rotate-tip { display: flex !important; }
+            #boot-error { display: none !important; }
+        }
+        #rotate-tip h2 {
+            font-size: 22px;
+            font-weight: 600;
+            letter-spacing: 1px;
+        }
+        #rotate-tip p {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.55);
+            line-height: 1.7;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="game-canvas"></canvas>
+    </div>
+
+    <div id="rotate-tip">
+        <div class="phone"></div>
+        <h2>请横屏游玩</h2>
+        <p>本游戏为 16:9 横屏设计<br>把手机横过来体验更好</p>
+    </div>
+
+    <div id="boot-error">
+        <b>游戏没能启动</b>
+        <div>浏览器拦截了脚本，或当前环境不支持。</div>
+        <div>手机请用 <code>Chrome</code> / <code>Safari</code> 打开；<br>
+        电脑可直接打开同目录的 <code>index.html</code>（单文件版）。</div>
+        <div id="boot-error-detail" style="font-size:12px;color:rgba(255,255,255,.4);max-width:90%;word-break:break-all;"></div>
+    </div>
+
+    <script>
+        // 兜底：脚本被拦截或运行出错时给出明确提示，而不是一片黑屏
+        (function () {
+            function show(msg) {
+                var el = document.getElementById('boot-error');
+                if (!el || el.style.display === 'flex') return;
+                el.style.display = 'flex';
+                var d = document.getElementById('boot-error-detail');
+                if (d && msg) d.textContent = String(msg).slice(0, 200);
+            }
+            function onErr(e) {
+                show((e && (e.message || (e.error && e.error.message))) || '');
+            }
+            window.addEventListener('error', onErr);
+            // 只兜住启动阶段，进游戏后不再拦截（避免打断正常游玩）
+            setTimeout(function () { window.removeEventListener('error', onErr); }, 3000);
+            window.addEventListener('load', function () {
+                setTimeout(function () {
+                    var c = document.getElementById('game-canvas');
+                    if (!window.__game && (!c || c.width <= 300)) show('');
+                }, 1500);
+            });
+        })();
+    </script>
+
+    <script type="module" src="./src/main.js"></script>
+</body>
+</html>
